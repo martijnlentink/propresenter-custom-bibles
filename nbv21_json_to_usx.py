@@ -1,11 +1,12 @@
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
+import regex as re
 from os import listdir
 from os.path import isfile
 import html
 import json
 
-chapter_files = [f for f in listdir() if isfile(f)]
+chapter_files = [f for f in listdir() if isfile(f) and re.match("[A-Z0-9]{3}\.\d+", f)]
 
 def prettify(elem):
     """Return a pretty-printed XML string for the Element."""

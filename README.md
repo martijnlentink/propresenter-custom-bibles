@@ -14,30 +14,7 @@ ProPresenter offers a list of bible translations to use during your services. In
 
 ### Windows
 
-1. Observe that ProPresenter stores the Bibles on the location `%programdata%\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name. The folders itself have the following strucure:
-```
-│   BibleData.proPref
-│
-├───818d0d02-fa1e-4038-85f9-bb5fcc65497b
-│   │   metadata.xml
-│   │   rvmetadata.xml
-│   │
-│   ├───SearchIndex
-│   │       segments.gen
-│   │       segments_2
-│   │       version
-│   │       _0.cfs
-│   │       _0.cfx
-│   │
-│   └───USX_1
-│           1CH.usx
-│           1CO.usx
-```
-- `BibleData.proPref` - File containing the installed bibles on the machine
-  - `{UUID}/metadata.xml` - Holds the [DBL metadata](https://thedigitalbiblelibrary.org/2017/07/07/introducing-dbl-metadata-2-0/) configuration
-  - `{UUID}/rvmetadata.xml` - RenewedVision ProPresenter metadata that is used in the Bibles tab
-  - `{UUID}/SearchIndex` - Folder containing the [Lucene search index](https://lucene.apache.org/) which is the generated index for the bible
-  - `{UUID}/USX` - Folder containing the [USX XML files](https://ubsicap.github.io/usx/) per chapter
+1. Observe that ProPresenter stores the Bibles on the location `C:\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name.
 
 2. Run the Python script `retrieve_chapters_nbv21.py`.
 <br>This will retrieve NBV21 bible chapter by chapter from the website and stores it in JSON format.
@@ -45,21 +22,21 @@ ProPresenter offers a list of bible translations to use during your services. In
     python retrieve_chapters_nbv21.py
     ```
 
-3. Run the script `json_to_usx.py`
+1. Run the script `json_to_usx.py`
    <br>This will convert the JSON contents to a valid USX book file by merging the different chapter files.
    ```shell
    python json_to_usx.py
    ```
 
-4. Download the `005eb691-c7b9-4f87-84dc-e6afb79e77c5` folder from `/Resources` in this repository and place it in the the bible directory on you disk
+2. Download the `005eb691-c7b9-4f87-84dc-e6afb79e77c5` folder from `/Resources` in this repository and place it in the the bible directory on you disk
 
-5. Place the USX files that were generated in the folder `005eb691-c7b9-4f87-84dc-e6afb79e77c5/USX`
+3. Place the USX files that were generated in the folder `005eb691-c7b9-4f87-84dc-e6afb79e77c5/USX`
 
-6. Update `BibleData.proPref` file such that it contains an entry for our new translation (By using the translation definition of WARMB).
+4. Update `BibleData.proPref` file such that it contains an entry for our new translation (By using the translation definition of WARMB).
 
     <pre>InstalledBiblesNew=["6fb4fb55-78a4-43bc-ac6a-076818c7abfc|BB|BasisBijbel|1",<b>"005eb691-c7b9-4f87-84dc-e6afb79e77c5|WARMB|Nieuwe Bijbelvertaling 2021|1"</b>];</pre>
 
-7. Reopen ProPresenter
+5. Reopen ProPresenter
 
 ### Mac
 
