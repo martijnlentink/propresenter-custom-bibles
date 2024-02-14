@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DBLMetadata revision="1" type="text" typeVersion="1.2">
+    <identification>
+    </identification>
+
+    <agencies>
+        <etenPartner>NON-DBL</etenPartner>
+    </agencies>
+    
+    <language>
+    </language>
+
+    <bookNames>
+    </bookNames>
+
+    <contents>
+        <bookList id="1" default="yes">
+            <name>Nieuwe Bijbelvertaling</name>
+            <nameLocal>Nieuwe Bijbelvertaling</nameLocal>
+            <abbreviation>kjv</abbreviation>
+            <abbreviationLocal>kjv</abbreviationLocal>
+            <description>English: King James Version Old and New Testament</description>
+            <range>Old and New Testament</range>
+            <books>
+            </books>
+        </bookList>
+    </contents>
+    <contact>
+        <rightsHolder></rightsHolder>
+        <rightsHolderLocal></rightsHolderLocal>
+        <rightsHolderAbbreviation>NBV21</rightsHolderAbbreviation>
+        <rightsHolderURL></rightsHolderURL>
+    </contact>
+    <promotion/>
+    <format>text/xml</format>
+</DBLMetadata>
