@@ -51,7 +51,7 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr):
         try:
             print(f"Retrieving bible chapter: {next}".ljust(40), end="\r", flush=True)
 
-            res = get(f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json", headers=headers)
+            res = get(f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}", headers=headers)
             data = res.json()
             filename = data["pageProps"]["params"]["usfm"]
             contents = data["pageProps"]["chapterInfo"]["content"]
@@ -243,3 +243,6 @@ if __name__ == '__main__':
     print("Moving bible to ProPresenter directory")
 
     move_rvbible_propresenter_folder(rvbible_location)
+
+    print("Done! Please restart ProPresenter and check if the bible is correctly installed.")
+    input("Press enter to close...")

@@ -4,13 +4,26 @@
 
 ProPresenter offers a list of bible translations to use during your services. In Dutch however quite a few translations are missing `NBV21` being one of them. After multiple requests to RenewedVision team to add it, they never did. After inspecting the code and file structure of how ProPresenter stores bibles on the disk I leveraged this to create new translations which can be opened an used.
 
-## Prerequisites
+## How to automatically
+
+I created a script which automatically downloads a Bible translation from bible.com and converts it to a ProPresenter bible (RVBible format). You can run the script, which will guide you through the steps needed to download and install the bible for ProPresenter.
+
+1. Download the executable from releases
+2. Run the executable
+3. Choose a [language code](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) to download
+4. Follow the script
+
+> [!IMPORTANT]
+> The script currently only has been tested on Windows and on numerous translations. If you experience any issues with downloading or after bible installation it not working properly, please create a ticket and I'll be happy to help out.
+
+
+## How to manually
+
+### Prerequisites
 - Python knowledge
 - Knowledge on APIs and HTTP requests
 - XML knowledge
 - ProPresenter
-
-## How to
 
 ### Windows
 
