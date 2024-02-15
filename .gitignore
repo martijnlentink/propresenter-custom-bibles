@@ -3,3 +3,5 @@ __pycache__
 *.usx
 download
 output
+build
+dist
