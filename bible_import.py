@@ -5,6 +5,7 @@ import regex as re
 from lxml import etree as ElementTree
 from lxml.etree import Element, SubElement, tostring
 import os
+import sys
 from uuid import uuid4
 import platform
 import datetime
@@ -23,7 +24,16 @@ headers = {
 
 download_folder = "download"
 output_folder = "output"
-resources_loc = "Resources"
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath("Resources")
+
+    return os.path.join(base_path, relative_path)
 
 def retrieve_bibles_for_language(lang):
     bibles_resp = get(f"https://www.bible.com/api/bible/versions?language_tag={lang}&type=all", headers=headers)
@@ -140,11 +150,11 @@ def process_bible_files(location, usx_folder):
         with open(output_location, 'w', encoding='utf-8') as file:
             file.write(pretty_print_xml(usx))
 
-def construct_metadataxmls(file_loc, output_file_loc, book_id):
+def construct_metadataxmls(output_file_loc, book_id):
     book_metadata_resp = get(f"https://www.bible.com/api/bible/version/{book_id}")
     js = book_metadata_resp.json()
 
-    metadata = os.path.join(file_loc, "metadata.xml")
+    metadata = resource_path("metadata.xml")
     xml_tree = ElementTree.parse(metadata)
 
     identification_el = xml_tree.xpath("//identification")[0]
@@ -233,7 +243,7 @@ if __name__ == '__main__':
 
     # process downloaded bible files to ProPresenter RVBible format
     process_bible_files(location, usx_folder)
-    construct_metadataxmls(resources_loc, output_folder, selected_bible_id)
+    construct_metadataxmls(output_folder, selected_bible_id)
 
     # create zip of bible files
     zip_location = os.path.join(output_folder, f"../{selected_bible_abbeviation}.rvbible")
