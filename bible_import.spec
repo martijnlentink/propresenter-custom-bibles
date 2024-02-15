@@ -5,7 +5,7 @@ a = Analysis(
     ['bible_import.py'],
     pathex=['.venv\\Lib\\site-packages'],
     binaries=[],
-    datas=[],
+    datas=[('Resources/metadata.xml', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
