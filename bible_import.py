@@ -51,8 +51,8 @@ def retrieve_api_id():
 
     return api_id
 
-def download_bible_chapters(location, selected_bible_id, selected_bible_abbr):
-    next = "GEN.1"
+def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bible_metadata):
+    next = bible_metadata["books"][0]["chapters"][0]["usfm"]
     retries = 5
     book_names = {}
     api_id = retrieve_api_id()
@@ -150,28 +150,29 @@ def process_bible_files(location, usx_folder):
         with open(output_location, 'w', encoding='utf-8') as file:
             file.write(pretty_print_xml(usx))
 
-def construct_metadataxmls(output_file_loc, book_id):
+def retrieve_bible_metadata(book_id):
     book_metadata_resp = get(f"https://www.bible.com/api/bible/version/{book_id}")
-    js = book_metadata_resp.json()
+    return book_metadata_resp.json()
 
+def construct_metadataxmls(output_file_loc, book_metadata):
     metadata = resource_path("metadata.xml")
     xml_tree = ElementTree.parse(metadata)
 
     identification_el = xml_tree.xpath("//identification")[0]
-    SubElement(identification_el, "name").text = js["title"]
-    SubElement(identification_el, "nameLocal").text = js["local_title"]
-    SubElement(identification_el, "abbreviation").text = js["abbreviation"]
-    SubElement(identification_el, "abbreviationLocal").text = js["local_abbreviation"]
+    SubElement(identification_el, "name").text = book_metadata["title"]
+    SubElement(identification_el, "nameLocal").text = book_metadata["local_title"]
+    SubElement(identification_el, "abbreviation").text = book_metadata["abbreviation"]
+    SubElement(identification_el, "abbreviationLocal").text = book_metadata["local_abbreviation"]
 
     language_el = xml_tree.xpath("//language")[0]
-    SubElement(language_el, "iso").text = js["language"]['iso_639_3']
-    SubElement(language_el, "name").text = js["language"]['name']
-    SubElement(language_el, "scriptDirection").text = js["language"]['text_direction']
+    SubElement(language_el, "iso").text = book_metadata["language"]['iso_639_3']
+    SubElement(language_el, "name").text = book_metadata["language"]['name']
+    SubElement(language_el, "scriptDirection").text = book_metadata["language"]['text_direction']
 
     book_names_el = xml_tree.xpath("//bookNames")[0]
     books_el = xml_tree.xpath("//bookList/books")[0]
 
-    for book in js["books"]:
+    for book in book_metadata["books"]:
         book_code = book['usfm']
         canon = book['canon']
         short = book['human']
@@ -189,9 +190,9 @@ def construct_metadataxmls(output_file_loc, book_id):
         handle.write(pretty_print_xml(xml_tree))
 
     root = Element("RVBibleMetdata")
-    SubElement(root, "name").text = js["local_title"]
-    SubElement(root, "abbreviation").text = js["abbreviation"]
-    SubElement(root, "displayAbbreviation").text = js["local_abbreviation"]
+    SubElement(root, "name").text = book_metadata["local_title"]
+    SubElement(root, "abbreviation").text = book_metadata["abbreviation"]
+    SubElement(root, "displayAbbreviation").text = book_metadata["local_abbreviation"]
     SubElement(root, "version").text = "1"
     SubElement(root, "revision").text = "0"
     SubElement(root, "licenseType").text = "0"
@@ -231,11 +232,14 @@ if __name__ == '__main__':
     selected_bible = available_bibles[selected_bible_id]
     selected_bible_abbeviation = selected_bible['local_abbreviation']
 
+    print("Retrieve bible metadata")
+    bible_metadata = retrieve_bible_metadata(selected_bible_id)
+
     print(f"Starting download {selected_bible['local_title']}")
 
     # perform bible download
     location = os.path.join(download_folder, selected_bible_abbeviation)
-    download_bible_chapters(location, selected_bible_id, selected_bible_abbeviation)
+    download_bible_chapters(location, selected_bible_id, selected_bible_abbeviation, bible_metadata)
 
     output_folder = os.path.join(output_folder, selected_bible_abbeviation)
     usx_folder = os.path.join(output_folder, "USX_1")
@@ -243,7 +247,7 @@ if __name__ == '__main__':
 
     # process downloaded bible files to ProPresenter RVBible format
     process_bible_files(location, usx_folder)
-    construct_metadataxmls(output_folder, selected_bible_id)
+    construct_metadataxmls(output_folder, bible_metadata)
 
     # create zip of bible files
     zip_location = os.path.join(output_folder, f"../{selected_bible_abbeviation}.rvbible")
