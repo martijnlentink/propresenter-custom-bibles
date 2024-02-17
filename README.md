@@ -27,7 +27,7 @@ I created a script which automatically downloads a Bible translation from bible.
 
 ### Windows
 
-1. Observe that ProPresenter stores the Bibles on the location `C:\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name.
+1. Observe that ProPresenter stores the Bibles on the location `%programdata%\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name.
 
 2. Run the Python script `retrieve_chapters_nbv21.py`.
 <br>This will retrieve NBV21 bible chapter by chapter from the website and stores it in JSON format.
