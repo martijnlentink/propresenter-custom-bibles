@@ -61,8 +61,14 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
         try:
             print(f"Retrieving bible chapter: {next}".ljust(40), end="\r", flush=True)
 
-            res = get(f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}", headers=headers)
+            url = f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json"
+            res = get(url, headers=headers)
             data = res.json()
+
+            if "__N_REDIRECT" in data["pageProps"]:
+                res = get(f"{url}?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}")
+                data = res.json()
+
             filename = data["pageProps"]["params"]["usfm"]
             contents = data["pageProps"]["chapterInfo"]["content"]
 
@@ -78,7 +84,7 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
             nextObj = data["pageProps"]["chapterInfo"]["next"]
             next = nextObj["usfm"][0] if nextObj is not None else None
 
-            time.sleep(.5)
+            #time.sleep(.5)
         except:
             retries -= 1
             if retries > 0:
@@ -91,9 +97,10 @@ def parse_chapter(parent, chapter):
     SubElement(parent, 'chapter', number=chapter_num, style='c')
 
     for el in chapter:
-        if "s1" in el.classes or "c1" in el.classes:
-            parse_header(parent, el)
-        elif "p" in el.classes or "q" in el.classes:
+        heading = el.xpath(".//*[contains(@class,'heading')]")
+        if len(heading) > 0:
+            parse_header(parent, heading[0])
+        else:
             parse_paragraph(parent, el, "p")
 
 def parse_paragraph(parent, paragraph, style):
@@ -243,7 +250,7 @@ if __name__ == '__main__':
 
     output_folder = os.path.join(output_folder, selected_bible_abbeviation)
     usx_folder = os.path.join(output_folder, "USX_1")
-    os.makedirs(usx_folder)
+    os.makedirs(usx_folder, exist_ok=True)
 
     # process downloaded bible files to ProPresenter RVBible format
     process_bible_files(location, usx_folder)
