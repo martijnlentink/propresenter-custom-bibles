@@ -14,6 +14,8 @@ from requests import get
 import time
 import html
 import json
+import click
+import itertools
 
 headers = {
     "Referer": "https://bible.com/",
@@ -65,7 +67,7 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
             res = get(url, headers=headers)
             data = res.json()
 
-            if "__N_REDIRECT" in data["pageProps"]:
+            if "__N_REDIRECT" in data["pageProps"] or data["pageProps"]["chapterInfo"] is None:
                 res = get(f"{url}?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}")
                 data = res.json()
 
@@ -75,8 +77,6 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
             human_book_name: str = data['pageProps']['chapterInfo']["reference"]["human"]
             book_code = next[:3]
             book_names[book_code] = human_book_name.rsplit(' ', 1)[0]
-
-            os.makedirs(location, exist_ok=True)
 
             with open(os.path.join(location, filename), "w", encoding='utf-8') as file:
                 file.writelines(html.unescape(contents))
@@ -99,7 +99,7 @@ def parse_chapter(parent, chapter):
     for el in chapter:
         heading = el.xpath(".//*[contains(@class,'heading')]")
         if len(heading) > 0:
-            parse_header(parent, heading[0])
+            parse_header(parent, heading)
         else:
             parse_paragraph(parent, el, "p")
 
@@ -111,17 +111,27 @@ def parse_paragraph(parent, paragraph, style):
             continue
 
         verse_number = verse_number_el[0].text
+
+        if not verse_number.isdecimal():
+            continue
+
         paragraph_el = SubElement(parent, 'para', style=style)
         verse_el = SubElement(paragraph_el, 'verse', number=verse_number, style='v')
 
-        verse_texts = verse.xpath('//*[@class="verse v' + verse_number + '"]/span[@class="content"]/text()')
-        verse_el.tail = ' '.join([x.strip() for x in verse_texts])
+        # retrieve all verse text components
+        verse_texts = verse.xpath('//*[@class="verse v' + verse_number + '"]//span[@class="content"]')
+        groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
+        # trim all texts and omit whitespace texts, then join them by a line separator
+        verse_text = os.linesep.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
+        # make sure that space do not occur in between punctuation
+        # verse_text_clean = re.sub(r'\s([?.!"](?:\s|$))', r'\1', text)
+        verse_el.tail = remove_unnecessary_spaces(verse_text.strip())
 
-def parse_header(parent, header):
+def parse_header(parent, headers):
     header_el = SubElement(parent, 'para', style="s1")
 
-    verses = header.xpath(".//text()")
-    header_el.text = ''.join(verses)
+    verses = list(itertools.chain(*[header.xpath(".//text()") for header in headers]))
+    header_el.text = ''.join(verses).strip()
 
 def pretty_print_xml(elem):
     """Return a pretty-printed XML string for the Element."""
@@ -131,7 +141,11 @@ def pretty_print_xml(elem):
 
 def process_bible_files(location, usx_folder):
     all_chapters_data = {}
+    # find valid chapter files
     chapter_files = [f for f in listdir(location) if re.match("[A-Z0-9]{3}\.\d+", f)]
+    # sort chapters numerically, for OSX users
+    chapter_files.sort(key=lambda x: int(x.split(".")[1]))
+
     for filename in chapter_files:
         file_location = os.path.join(location, filename)
 
@@ -225,6 +239,11 @@ def move_rvbible_propresenter_folder(rvbible_loc):
     new_file_loc = os.path.join(propresenter_bible_location, filename)
     shutil.copyfile(rvbible_loc, new_file_loc)
 
+def remove_unnecessary_spaces(text):
+    a = re.sub(r"(\s)+", r"\1", text)
+    charset = '''["'“”‘’«»‹›„‚”’.,!:;]'''
+    a = re.sub(rf"({charset})\s+({charset})", r"\1\2", a)
+    return a
 
 if __name__ == '__main__':
     os.makedirs(download_folder, exist_ok=True)
@@ -242,11 +261,15 @@ if __name__ == '__main__':
     print("Retrieve bible metadata")
     bible_metadata = retrieve_bible_metadata(selected_bible_id)
 
-    print(f"Starting download {selected_bible['local_title']}")
-
     # perform bible download
     location = os.path.join(download_folder, selected_bible_abbeviation)
-    download_bible_chapters(location, selected_bible_id, selected_bible_abbeviation, bible_metadata)
+    download_required = not os.path.exists(location) or click.confirm(f"It appears that there is already a download folder for bible {selected_bible_abbeviation}. Are you sure you want to download the bible contents?")
+    
+    if download_required:
+        os.makedirs(location, exist_ok=True)
+
+        print(f"Starting download {selected_bible['local_title']}")
+        download_bible_chapters(location, selected_bible_id, selected_bible_abbeviation, bible_metadata)
 
     output_folder = os.path.join(output_folder, selected_bible_abbeviation)
     usx_folder = os.path.join(output_folder, "USX_1")
