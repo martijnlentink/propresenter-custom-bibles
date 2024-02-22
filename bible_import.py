@@ -1,7 +1,6 @@
 import lxml.html
 from os import listdir
-from xml.dom import minidom
-import regex as re
+import re
 from lxml import etree as ElementTree
 from lxml.etree import Element, SubElement, tostring
 import os
@@ -16,6 +15,7 @@ import html
 import json
 import click
 import itertools
+from tqdm import tqdm
 
 headers = {
     "Referer": "https://bible.com/",
@@ -120,12 +120,12 @@ def parse_paragraph(parent, paragraph, style):
 
         # retrieve all verse text components
         verse_texts = verse.xpath('//*[@class="verse v' + verse_number + '"]//span[@class="content"]')
+        # group by div-tag, these will be text blocks for a single line
         groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
         # trim all texts and omit whitespace texts, then join them by a line separator
-        verse_text = os.linesep.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
+        verse_text = '\n'.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
         # make sure that space do not occur in between punctuation
-        # verse_text_clean = re.sub(r'\s([?.!"](?:\s|$))', r'\1', text)
-        verse_el.tail = remove_unnecessary_spaces(verse_text.strip())
+        verse_el.tail = remove_unnecessary_whitespaces(verse_text.strip())
 
 def parse_header(parent, headers):
     header_el = SubElement(parent, 'para', style="s1")
@@ -133,11 +133,9 @@ def parse_header(parent, headers):
     verses = list(itertools.chain(*[header.xpath(".//text()") for header in headers]))
     header_el.text = ''.join(verses).strip()
 
-def pretty_print_xml(elem):
-    """Return a pretty-printed XML string for the Element."""
-    rough_string = tostring(elem, encoding='utf-8')
-    reparsed = minidom.parseString(rough_string)
-    return reparsed.childNodes[0].toprettyxml(indent="  ")
+def toxml(elem):
+    """Return a XML string for the Element."""
+    return tostring(elem, encoding='utf-8')
 
 def process_bible_files(location, usx_folder):
     all_chapters_data = {}
@@ -156,20 +154,22 @@ def process_bible_files(location, usx_folder):
             chapter_data.append(handle.read())
             all_chapters_data[book_code] = chapter_data
 
-    for book_code, chapters in all_chapters_data.items():
+    iterations = tqdm(all_chapters_data.items(), desc="Chapter")
+    for book_code, chapters in iterations:
+        iterations.set_description(book_code)
         # Create the root element
         usx = Element('usx', version='2.0')
         SubElement(usx, 'book', code=book_code).text = book_code
 
-        for chapter in chapters:
+        for chapter in tqdm(chapters, leave=False):
             tree = lxml.html.fromstring(chapter)
             chapter_el = tree.xpath("//*[contains(@class, 'chapter')]")[0]
             parse_chapter(usx, chapter_el)
 
         output_location = os.path.join(usx_folder, book_code + ".usx")
         # Writing to USX file
-        with open(output_location, 'w', encoding='utf-8') as file:
-            file.write(pretty_print_xml(usx))
+        with open(output_location, 'wb') as file:
+            file.write(toxml(usx))
 
 def retrieve_bible_metadata(book_id):
     book_metadata_resp = get(f"https://www.bible.com/api/bible/version/{book_id}")
@@ -207,8 +207,8 @@ def construct_metadataxmls(output_file_loc, book_metadata):
         SubElement(books_el, "book", code=book_code)
 
     metadataxml_output = os.path.join(output_file_loc, "metadata.xml")
-    with open(metadataxml_output, 'w', encoding='utf-8') as handle:
-        handle.write(pretty_print_xml(xml_tree))
+    with open(metadataxml_output, 'wb') as handle:
+        handle.write(toxml(xml_tree))
 
     root = Element("RVBibleMetdata")
     SubElement(root, "name").text = book_metadata["local_title"]
@@ -220,8 +220,8 @@ def construct_metadataxmls(output_file_loc, book_metadata):
     SubElement(root, "license")
 
     rvmetadataxml_output = os.path.join(output_file_loc, "rvmetadata.xml")
-    with open(rvmetadataxml_output, 'w', encoding='utf-8') as handle:
-        handle.write(pretty_print_xml(root))
+    with open(rvmetadataxml_output, 'wb') as handle:
+        handle.write(toxml(root))
 
 def move_rvbible_propresenter_folder(rvbible_loc):
     system_str = platform.system()
@@ -239,22 +239,25 @@ def move_rvbible_propresenter_folder(rvbible_loc):
     new_file_loc = os.path.join(propresenter_bible_location, filename)
     shutil.copyfile(rvbible_loc, new_file_loc)
 
-def remove_unnecessary_spaces(text):
-    a = re.sub(r"(\s)+", r"\1", text)
-    charset = '''["'“”‘’«»‹›„‚”’.,!:;]'''
-    a = re.sub(rf"({charset})\s+({charset})", r"\1\2", a)
+def remove_unnecessary_whitespaces(text):
+    # Remove multiple whitespaces, don't consider new lines
+    a = re.sub(r"([^\S\n])+", r"\1", text)
+    # Remove spaces in between specific punctuation sequences
+    a = re.sub(r"([\"'“”‘’«»‹›„‚”’])[^\S\n]+([\"'“”‘’«»‹›„‚”’.,!:;])", r"\1\2", a)
+    a = re.sub(r"([.,!:;])[^\S\n]+([.,!:;])", r"\1\2", a)
     return a
 
 if __name__ == '__main__':
     os.makedirs(download_folder, exist_ok=True)
 
-    language = input("Which language would you want to download? - Please give in a valid ISO 639 three character language code\n")
+    click.echo("Which language would you want to download?")
+    language = click.prompt("Please give in a valid ISO 639 three character language code")
     available_bibles = retrieve_bibles_for_language(language)
     options_response_str = '\n'.join([f"{x['id']}: {x['local_title']} ({x['local_abbreviation']})" for x in available_bibles.values()])
 
     print(options_response_str)
 
-    selected_bible_id = int(input("Please select the number above to download the scripture\n"))
+    selected_bible_id = click.prompt("Please select the number above to download the scripture", type=int)
     selected_bible = available_bibles[selected_bible_id]
     selected_bible_abbeviation = selected_bible['local_abbreviation']
 
@@ -276,6 +279,7 @@ if __name__ == '__main__':
     os.makedirs(usx_folder, exist_ok=True)
 
     # process downloaded bible files to ProPresenter RVBible format
+    print("Converting chapters to valid USX format")
     process_bible_files(location, usx_folder)
     construct_metadataxmls(output_folder, bible_metadata)
 
