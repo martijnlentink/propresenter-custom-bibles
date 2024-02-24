@@ -126,6 +126,8 @@ def parse_paragraph(parent, paragraph, style):
         verse_text = '\n'.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
         # make sure that space do not occur in between punctuation
         verse_el.tail = remove_unnecessary_whitespaces(verse_text.strip())
+        # remove paragraph marks
+        verse_el.tail = remove_paragraph_marks(verse_el.tail)
 
 def parse_header(parent, headers):
     header_el = SubElement(parent, 'para', style="s1")
@@ -245,6 +247,12 @@ def remove_unnecessary_whitespaces(text):
     # Remove spaces in between specific punctuation sequences
     a = re.sub(r"([\"'“”‘’«»‹›„‚”’])[^\S\n]+([\"'“”‘’«»‹›„‚”’.,!:;])", r"\1\2", a)
     a = re.sub(r"([.,!:;])[^\S\n]+([.,!:;])", r"\1\2", a)
+    return a
+
+def remove_paragraph_marks(text):
+    # Replace paragraph marks with an empty string
+    a = re.compile(r'¶')
+    a = re.sub(a, '', text)
     return a
 
 if __name__ == '__main__':
