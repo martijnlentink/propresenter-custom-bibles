@@ -1,0 +1,1 @@
+pyinstaller -c -F --paths=.venv\Lib\site-packages bible_import.py --add-data "Resources/metadata.xml:."
