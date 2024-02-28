@@ -15,6 +15,9 @@ import html
 import json
 import click
 import itertools
+import zipfile
+import io
+import pathlib
 from tqdm import tqdm
 
 headers = {
@@ -44,6 +47,28 @@ def retrieve_bibles_for_language(lang):
 
     return available_bibles
 
+def read_yves_file(file_name):
+	with open(file_name, 'rb') as handle:
+		arrayOfByte = handle.read()
+		return decode_yves_bytes(arrayOfByte)
+
+# adaptation of the app Java code youversion.bible.reader.api.impl.ChapterContentData.decode
+def decode_yves_bytes(input_bytes):
+    i2 = len(input_bytes)
+    bArr = bytearray(input_bytes)
+    for i3 in range(0, i2, 2):
+        i4 = i3 + 1
+        if i2 > i4:
+            temp_i4 = ((bArr[i3] & 255) >> 5) | ((bArr[i3] & 255) << 3)
+            bArr[i3] = ((bArr[i4] & 255) >> 5) | ((bArr[i4] & 255) << 3) & 0xFF
+            bArr[i4] = temp_i4 & 0xFF
+        else:
+            bArr[i3] = (((bArr[i3] & 255) >> 5) | ((bArr[i3] & 255) << 3)) & 0xFF
+
+    # Convert the modified bytearray back to bytes for decoding
+    str_output = bytes(bArr).decode("UTF-8", errors="ignore")
+    return str_output
+
 def retrieve_api_id():
     landing_page_response = get("https://www.bible.com")
     html_page = lxml.html.fromstring(landing_page_response.text)
@@ -54,46 +79,66 @@ def retrieve_api_id():
     return api_id
 
 def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bible_metadata):
-    next = bible_metadata["books"][0]["chapters"][0]["usfm"]
-    retries = 5
-    book_names = {}
-    api_id = retrieve_api_id()
+    offline_location = bible_metadata["offline"]
 
-    while next is not None:
-        try:
-            print(f"Retrieving bible chapter: {next}".ljust(40), end="\r", flush=True)
+    # Download bible using offline yves files
+    if offline_location is not None:
+        offline_url = offline_location["url"]
+        response = get(f"https:{offline_url}")
+        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
+        yves_zip = os.path.join(location, "yves")
+        zip_file.extractall(yves_zip)
 
-            url = f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json"
-            res = get(url, headers=headers)
-            data = res.json()
+        for yves_chapter_file in tqdm(pathlib.Path(yves_zip).rglob("*.yves"), desc="Decode Yves files to HTML"):
+            decoded_data = read_yves_file(yves_chapter_file)
+            chapter_name = yves_chapter_file.parent.name
+            chapter_num = yves_chapter_file.name.split(".")[0]
 
-            if "__N_REDIRECT" in data["pageProps"] or data["pageProps"]["chapterInfo"] is None:
-                res = get(f"{url}?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}")
+            chapter_identifier = f"{chapter_name}.{chapter_num}"
+            with open(os.path.join(location, chapter_identifier), "w", encoding='utf-8') as file:
+                file.writelines(decoded_data)
+    else:
+        #  Download bible per page
+        next = bible_metadata["books"][0]["chapters"][0]["usfm"]
+        retries = 5
+        book_names = {}
+        api_id = retrieve_api_id()
+
+        while next is not None:
+            try:
+                print(f"Retrieving bible chapter: {next}".ljust(40), end="\r", flush=True)
+
+                url = f"https://www.bible.com/_next/data/{api_id}/en/bible/{selected_bible_id}/{next}.{selected_bible_abbr}.json"
+                res = get(url, headers=headers)
                 data = res.json()
 
-            filename = data["pageProps"]["params"]["usfm"]
-            contents = data["pageProps"]["chapterInfo"]["content"]
+                if "__N_REDIRECT" in data["pageProps"] or data["pageProps"]["chapterInfo"] is None:
+                    res = get(f"{url}?version={selected_bible_id}&usfm={next}.{selected_bible_abbr}")
+                    data = res.json()
 
-            human_book_name: str = data['pageProps']['chapterInfo']["reference"]["human"]
-            book_code = next[:3]
-            book_names[book_code] = human_book_name.rsplit(' ', 1)[0]
+                filename = data["pageProps"]["params"]["usfm"]
+                contents = data["pageProps"]["chapterInfo"]["content"]
 
-            with open(os.path.join(location, filename), "w", encoding='utf-8') as file:
-                file.writelines(html.unescape(contents))
+                human_book_name: str = data['pageProps']['chapterInfo']["reference"]["human"]
+                book_code = next[:3]
+                book_names[book_code] = human_book_name.rsplit(' ', 1)[0]
 
-            nextObj = data["pageProps"]["chapterInfo"]["next"]
-            next = nextObj["usfm"][0] if nextObj is not None else None
+                with open(os.path.join(location, filename), "w", encoding='utf-8') as file:
+                    file.writelines(html.unescape(contents))
 
-            #time.sleep(.5)
-        except:
-            retries -= 1
-            if retries > 0:
-                time.sleep(5)
-            else:
-                raise
+                nextObj = data["pageProps"]["chapterInfo"]["next"]
+                next = nextObj["usfm"][0] if nextObj is not None else None
+
+                #time.sleep(.5)
+            except:
+                retries -= 1
+                if retries > 0:
+                    time.sleep(5)
+                else:
+                    raise
 
 def parse_chapter(parent, chapter):
-    chapter_num = list(chapter.classes)[-1][2:]
+    chapter_num = chapter.attrib["data-usfm"].split(".")[-1]
     SubElement(parent, 'chapter', number=chapter_num, style='c')
 
     for el in chapter:
