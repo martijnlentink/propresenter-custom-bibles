@@ -124,10 +124,8 @@ def parse_paragraph(parent, paragraph, style):
         groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
         # trim all texts and omit whitespace texts, then join them by a line separator
         verse_text = '\n'.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
-        # make sure that space do not occur in between punctuation
-        verse_el.tail = remove_unnecessary_whitespaces(verse_text.strip())
-        # remove paragraph marks
-        verse_el.tail = remove_paragraph_marks(verse_el.tail)
+        # verse contents post-processing
+        verse_el.tail = cleanup_verse_contents(verse_text.strip())
 
 def parse_header(parent, headers):
     header_el = SubElement(parent, 'para', style="s1")
@@ -241,18 +239,17 @@ def move_rvbible_propresenter_folder(rvbible_loc):
     new_file_loc = os.path.join(propresenter_bible_location, filename)
     shutil.copyfile(rvbible_loc, new_file_loc)
 
-def remove_unnecessary_whitespaces(text):
+def cleanup_verse_contents(text):
     # Remove multiple whitespaces, don't consider new lines
     a = re.sub(r"([^\S\n])+", r"\1", text)
     # Remove spaces in between specific punctuation sequences
     a = re.sub(r"([\"'“”‘’«»‹›„‚”’])[^\S\n]+([\"'“”‘’«»‹›„‚”’.,!:;])", r"\1\2", a)
     a = re.sub(r"([.,!:;])[^\S\n]+([.,!:;])", r"\1\2", a)
-    return a
 
-def remove_paragraph_marks(text):
-    # Replace paragraph marks with an empty string
-    a = re.compile(r'¶')
-    a = re.sub(a, '', text)
+    # Fixes issue #4 - Bible.com mistakenly contains paragraph characters
+    # Specifically at this verse: https://www.bible.com/bible/2692/ISA.27.2.NASB2020
+    # consider deletion if source is updated
+    a = a.replace('¶', '')
     return a
 
 if __name__ == '__main__':
