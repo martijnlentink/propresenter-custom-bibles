@@ -103,6 +103,27 @@ def parse_chapter(parent, chapter):
         else:
             parse_paragraph(parent, el, "p")
 
+def parse_verse_numbers(verse_label: str):
+    verse_input = verse_label.strip()
+
+    def extract_verse(inp: str):
+        matches = re.match(r"(?P<verse_int>\d+)(?P<verse_alpha>[a-z])?", inp.strip())
+        return (int(matches["verse_int"]), matches["verse_alpha"])
+
+    # in the exceptional translations where verses are returned in ranges
+    if "-" in verse_input:
+        range_numbers = verse_input.split("-", 1)
+        lower = extract_verse(range_numbers[0])
+        upper = extract_verse(range_numbers[-1])
+
+        ranges = range(lower[0], upper[0])
+        return [range_numbers[0], *ranges[1:], range_numbers[-1]]
+    # single verse
+    elif extract_verse(verse_input):
+        return [verse_input]
+
+    return None
+
 def parse_paragraph(parent, paragraph, style):
     verses = paragraph.xpath(".//*[contains(@class,'verse')]")
     for verse in verses:
@@ -110,16 +131,18 @@ def parse_paragraph(parent, paragraph, style):
         if len(verse_number_el) == 0:
             continue
 
-        verse_number = verse_number_el[0].text
+        verse_number_label = verse_number_el[0].text
+        verse_numbers = parse_verse_numbers(verse_number_label)
 
-        if not verse_number.isdecimal():
+        if not verse_numbers:
             continue
 
         paragraph_el = SubElement(parent, 'para', style=style)
-        verse_el = SubElement(paragraph_el, 'verse', number=verse_number, style='v')
+        verse_el = SubElement(paragraph_el, 'verse', number=verse_number_label, style='v')
 
         # retrieve all verse text components
-        verse_texts = verse.xpath('//*[@class="verse v' + verse_number + '"]//span[@class="content"]')
+        verse_number_classes = ' '. join([f"v{x}" for x in verse_numbers])
+        verse_texts = verse.xpath('//*[@class="verse ' + verse_number_classes + '"]//span[@class="content"]')
         # group by div-tag, these will be text blocks for a single line
         groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
         # trim all texts and omit whitespace texts, then join them by a line separator
