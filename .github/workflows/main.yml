@@ -1,0 +1,22 @@
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['windows-latest', 'macos-latest']
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+
+    - run: pip install -r requirements.txt pyinstaller
+    - run: pyinstaller -c -F bible_import.py --add-data "Resources/metadata.xml:."
+    - uses: actions/upload-artifact@v2
+      with:
+        path: dist/*
