@@ -44,5 +44,6 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: bible_import.${{ matrix.abbr }}
+        name: bible_import.${{ matrix.abbr }}.${{ matrix.archive }}
         path: ./bible_import_${{ matrix.abbr }}.${{ matrix.archive }}
+        compression-level: 0
