@@ -34,15 +34,15 @@ jobs:
       if: matrix.abbr == 'OSX'
       run: |
         cd dist
-        tar -cvf ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} ./*
+        tar -cvf ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} *
 
     - name: Compress artifacts WIN
       if: matrix.abbr == 'WIN'
       run: |
         cd dist
-        tar -a -c -f ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} ./*
+        tar -a -c -f ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} *
 
     - uses: actions/upload-artifact@v4
       with:
-        name: bible_import.${{ matrix.abbr }}.${{ matrix.archive }}
+        name: bible_import.${{ matrix.abbr }}
         path: ./bible_import_${{ matrix.abbr }}.${{ matrix.archive }}
