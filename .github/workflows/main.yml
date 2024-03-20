@@ -1,0 +1,49 @@
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['windows-latest', 'macos-latest']
+        include:
+          - os: windows-latest
+            abbr: WIN
+            archive: zip
+          - os: macos-latest
+            abbr: OSX
+            archive: tar
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - run: pip install -r requirements.txt pyinstaller
+    - run: pyinstaller -c -F bible_import.py --add-data "Resources/metadata.xml:."
+
+    # Make the file executable on macOS
+    - name: Make file executable
+      if: matrix.abbr == 'OSX'
+      run: chmod +x dist/bible_import
+
+    - name: Compress artifacts OSX
+      if: matrix.abbr == 'OSX'
+      run: |
+        cd dist
+        tar -cvf ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} *
+
+    - name: Compress artifacts WIN
+      if: matrix.abbr == 'WIN'
+      run: |
+        cd dist
+        tar -a -c -f ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} *
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: bible_import.${{ matrix.abbr }}.${{ matrix.archive }}
+        path: ./bible_import_${{ matrix.abbr }}.${{ matrix.archive }}
+        compression-level: 0
