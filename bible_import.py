@@ -108,7 +108,7 @@ def parse_verse_numbers(verse_label: str):
 
     def extract_verse(inp: str):
         matches = re.match(r"(?P<verse_int>\d+)(?P<verse_alpha>[a-z])?", inp.strip())
-        return (int(matches["verse_int"]), matches["verse_alpha"])
+        return (int(matches["verse_int"]), matches["verse_alpha"]) if matches else None
 
     # in the exceptional translations where verses are returned in ranges
     if "-" in verse_input:
