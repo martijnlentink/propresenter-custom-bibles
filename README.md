@@ -8,16 +8,20 @@ ProPresenter offers a list of bible translations to use during your services. In
 
 I created a script which automatically downloads a Bible translation from bible.com and converts it to a ProPresenter bible (RVBible format). You can run the script, which will guide you through the steps needed to download and install the bible for ProPresenter.
 
-1. Download the executable from releases
-2. Run the executable
-3. Choose a [language code](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) to download
-4. Follow the script
+1. Go to the [releases](https://github.com/martijnlentink/propresenter-custom-bibles/releases) on GitHub
+1. Download the attached zip file for your platform from the assets section. There is a Windows and a Mac version.
+1. After download, unzip the binary by right clicking to extract
+1. Double click to open and run the executable
+1. It will guide you through the steps. It will prompt for a [three letter language code](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) (eng for English, nld for Dutch, deu for German), will ask for the Bible translation you'd like and will then perform the download operation.
 
 > [!IMPORTANT]
-> The script currently only has been tested on Windows and on numerous translations. If you experience any issues with downloading or after bible installation it not working properly, please create a ticket and I'll be happy to help out.
+> The script currently only has been tested on Windows, Mac OSX and on numerous translations. If you experience any issues with downloading or after bible installation it not working properly, please create a ticket and I'll be happy to help out.
 
 
-## How to manually
+## Ad hoc scripts
+
+> [!IMPORTANT]
+> The manual ad hoc scripts do not work out of the box and contain hard coded values. I would recommend everyone to use the executables or the `bible_import.py` script directly!
 
 ### Prerequisites
 - Python knowledge
