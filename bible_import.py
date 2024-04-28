@@ -148,26 +148,38 @@ def parse_chapter(parent, chapter):
         else:
             parse_paragraph(parent, el, "p")
 
-def parse_verse_numbers(verse_label: str):
+def parse_verse_numbers(verse_label: str, verse):
     verse_input = verse_label.strip()
 
-    def extract_verse(inp: str):
+    def extract_verse_from_label(inp: str):
         matches = re.match(r"(?P<verse_int>\d+)(?P<verse_alpha>[a-z])?", inp.strip())
         return (int(matches["verse_int"]), matches["verse_alpha"]) if matches else None
+    
+    def extract_verse_from_span(span):
+        try:
+            # matches based on class names like 'v1 v2 v3' etc.
+            return [int(x[1:]) for x in span.classes if re.match(r"v\d+", x)] if span is not None and "verse" in span.classes else None
+        except:
+            return None
 
     # in the exceptional translations where verses are returned in ranges
     if "-" in verse_input:
         range_numbers = verse_input.split("-", 1)
-        lower = extract_verse(range_numbers[0])
-        upper = extract_verse(range_numbers[-1])
 
-        ranges = range(lower[0], upper[0])
-        return [range_numbers[0], *ranges[1:], range_numbers[-1]]
+        lower = extract_verse_from_label(range_numbers[0])
+        upper = extract_verse_from_label(range_numbers[-1])
+
+        # ensures that ranges require an upper and lower bound
+        if isinstance(lower, tuple) and isinstance(upper, tuple):
+            ranges = range(lower[0], upper[0])
+            return [range_numbers[0], *ranges[1:], range_numbers[-1]]
     # single verse
-    elif extract_verse(verse_input):
+    elif extract_verse_from_label(verse_input):
         return [verse_input]
 
-    return None
+    # if label based matching fails, try it using the span classes
+    # fixes bug #15 - Related to the fact that UKR Bible 1755 in ECC5.19 the label is displayed as - (dash) https://www.bible.com/bible/1755/ECC.5
+    return extract_verse_from_span(verse)
 
 def parse_paragraph(parent, paragraph, style):
     verses = paragraph.xpath(".//*[contains(@class,'verse')]")
@@ -177,7 +189,8 @@ def parse_paragraph(parent, paragraph, style):
             continue
 
         verse_number_label = verse_number_el[0].text
-        verse_numbers = parse_verse_numbers(verse_number_label)
+        verse_number_parent = verse_number_el[0].getparent()
+        verse_numbers = parse_verse_numbers(verse_number_label, verse_number_parent)
 
         if not verse_numbers:
             continue
