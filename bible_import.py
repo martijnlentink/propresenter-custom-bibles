@@ -18,6 +18,7 @@ import itertools
 import zipfile
 import io
 import pathlib
+import string
 from tqdm import tqdm
 
 headers = {
@@ -198,8 +199,8 @@ def parse_paragraph(parent, paragraph, style):
         paragraph_el = SubElement(parent, 'para', style=style)
         verse_el = SubElement(paragraph_el, 'verse', number=verse_number_label, style='v')
 
-        # retrieve all verse text components
-        verse_number_classes = ' '. join([f"v{x}" for x in verse_numbers])
+        # retrieve all verse text components - strip alphanumeric suffix
+        verse_number_classes = ' '. join(["v" + str(x).rstrip(string.ascii_lowercase) for x in verse_numbers])
         verse_texts = verse.xpath('//*[@class="verse ' + verse_number_classes + '"]//span[@class="content"]')
         # group by div-tag, these will be text blocks for a single line
         groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
