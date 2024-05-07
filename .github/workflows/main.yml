@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['windows-latest', 'macos-latest']
+        os: ['windows-latest', 'macos-latest', 'macos-13']
         include:
           - os: windows-latest
             abbr: WIN
@@ -15,15 +15,20 @@ jobs:
           - os: macos-latest
             abbr: OSX
             archive: tar
+            arch: arm64
+          - os: macos-13
+            abbr: OSX
+            archive: tar
+            arch: x86_64
 
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.12'
 
     - run: pip install -r requirements.txt pyinstaller
-    - run: pyinstaller -c -F bible_import.py --add-data "Resources/metadata.xml:."
+    - run: pyinstaller -c -F bible_import.py --add-data "Resources/metadata.xml:." ${{ matrix.arch != '' && format('--target-architecture {0}', matrix.arch) || '' }}
 
     # Make the file executable on macOS
     - name: Make file executable
@@ -34,7 +39,7 @@ jobs:
       if: matrix.abbr == 'OSX'
       run: |
         cd dist
-        tar -cvf ../bible_import_${{ matrix.abbr }}.${{ matrix.archive }} *
+        tar -cvf ../bible_import_${{ matrix.abbr }}.${{ matrix.arch }}.${{ matrix.archive }} *
 
     - name: Compress artifacts WIN
       if: matrix.abbr == 'WIN'
@@ -44,6 +49,6 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: bible_import.${{ matrix.abbr }}.${{ matrix.archive }}
-        path: ./bible_import_${{ matrix.abbr }}.${{ matrix.archive }}
+        name: bible_import.${{ matrix.abbr }}${{ matrix.arch != '' && format('.{0}', matrix.arch) || '' }}.${{ matrix.archive }}
+        path: ./bible_import_${{ matrix.abbr }}${{ matrix.arch != '' && format('.{0}', matrix.arch) || '' }}.${{ matrix.archive }}
         compression-level: 0
