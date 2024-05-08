@@ -18,11 +18,9 @@ def run(currentContent, xmlElement):
     if isinstance(currentContent, str):
         currentContent = html.escape(currentContent)
 
-        if len(xmlElement) == 0:
-            xmlElement.text = currentContent if xmlElement.text == None else xmlElement.text + currentContent
-        else:
-             target = list(xmlElement.iter())[-1]
-             target.tail = currentContent if target.tail == None else target.tail + currentContent
+        if len(xmlElement) != 0:
+            target = list(xmlElement.iter())[-1]
+            target.tail = currentContent if target.tail == None else target.tail + currentContent
     elif isinstance(currentContent, list):
         for el in currentContent:
             run(el, xmlElement)
