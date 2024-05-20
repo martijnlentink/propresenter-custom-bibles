@@ -1,3 +1,4 @@
+from typing import Dict
 import lxml.html
 from os import listdir
 import re
@@ -20,6 +21,8 @@ import io
 import pathlib
 import string
 from tqdm import tqdm
+from prompt_toolkit import prompt
+from prompt_toolkit.completion import Completer, Completion
 
 headers = {
     "Referer": "https://bible.com/",
@@ -69,6 +72,42 @@ def decode_yves_bytes(input_bytes):
     # Convert the modified bytearray back to bytes for decoding
     str_output = bytes(bArr).decode("UTF-8", errors="ignore")
     return str_output
+
+class PromptCompleter(Completer):
+
+    def __init__(self, options: Dict[str, str]):
+        self._options = options
+
+    def get_completions(self, document, complete_event):
+        word_before_cursor = document.get_word_before_cursor()
+        for display_text, value in self._options.items():
+            if word_before_cursor.lower() in display_text.lower():
+                yield Completion(display_text, start_position=-len(word_before_cursor), display_meta=value)
+
+
+def choose_language():
+
+    languages = get("https://www.bible.com/api/bible/configuration")
+    langs = languages.json()
+    lang_versions = langs["response"]["data"]["default_versions"]
+
+    def gen_name(lang_version):
+        local_name = lang_version["local_name"]
+        name = lang_version["name"]
+        return local_name if local_name == name else f"{local_name} ({name})"
+
+    prompt_options = {gen_name(x): x["iso_639_3"] for x in lang_versions }
+
+    print("Choose the language you want to retrieve")
+    while True:
+        choice = prompt('Type to filter: ', completer=PromptCompleter(prompt_options))
+        lang_code = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower()), None)
+        if lang_code is not None:
+            return lang_code
+
+        print("Please select a valid language from the list. Press TAB to select.")
+
+    return lang_code
 
 def retrieve_api_id():
     landing_page_response = get("https://www.bible.com")
@@ -338,7 +377,7 @@ if __name__ == '__main__':
     os.makedirs(download_folder, exist_ok=True)
 
     click.echo("Which language would you want to download?")
-    language = click.prompt("Please give in a valid ISO 639 three character language code")
+    language = choose_language()
     available_bibles = retrieve_bibles_for_language(language)
     options_response_str = '\n'.join([f"{x['id']}: {x['local_title']} ({x['local_abbreviation']})" for x in available_bibles.values()])
 
