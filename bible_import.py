@@ -23,6 +23,7 @@ import string
 from tqdm import tqdm
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.shortcuts import radiolist_dialog
 
 headers = {
     "Referer": "https://bible.com/",
@@ -106,8 +107,6 @@ def choose_language():
             return lang_code
 
         print("Please select a valid language from the list. Press TAB to select.")
-
-    return lang_code
 
 def retrieve_api_id():
     landing_page_response = get("https://www.bible.com")
@@ -373,6 +372,64 @@ def cleanup_verse_contents(text):
     a = a.replace('¶', '')
     return a
 
+def overwrite_free_bible(bible_folder):
+    program_data = os.getenv('PROGRAMDATA')
+    def parse_bible_meta(bible_meta_string):
+        splitted = bible_meta_string.split('|')
+        return { "id": splitted[0], "abbreviation": splitted[1], "translation": splitted[2], "bible_format": splitted[3] }
+    
+    with open(resource_path("available_bibles.json"), "r", encoding='utf-8') as free_bibles:
+        free_bibles_txt = free_bibles.read()
+        free_bibles_json = json.loads(free_bibles_txt)
+
+    propresenter_bible_location = os.path.join(program_data, 'RenewedVision\ProPresenter\Bibles')
+    with open(os.path.join(propresenter_bible_location, "BibleData.proPref"), "r+", encoding='utf-8') as bibledata_handle:
+        # reading and parsing of BibleData.proPref - on Windows this stores the bible locations in the folder
+        bibledata_contents = bibledata_handle.read()
+        bibledata_arr_text = re.match(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?", bibledata_contents)
+        bibledata_json: list = json.loads(bibledata_arr_text.group("array"))
+        bible_metadatas = [parse_bible_meta(x) for x in bibledata_json]
+
+        # determine which abbreviations are in use to give them back
+        used_abbreviations = set(x["abbreviation"] for x in bible_metadatas)
+        prompt_options = {f'{x["language"]} - {x["name"]}': x["displayAbbreviation"] for x in free_bibles_json if x["internalAbbreviation"] not in used_abbreviations}
+        print("Which translation would you like to overwrite?")
+        print("Choose wisely - Please mind that you will not be able to use this translation anymore!")
+
+        while True:
+           choice = prompt('Type to filter', completer=PromptCompleter(prompt_options))
+           choice_abbr = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower() or x[1].lower() == choice.lower()), None)
+           choice_biblemeta = next((x for x in free_bibles_json if x["displayAbbreviation"].lower() == str(choice_abbr).lower()), None)
+           if choice_abbr is not None and choice_biblemeta is not None:
+               break
+
+           print("Please select one of the abbreviations from the list")
+
+        overwrite_abbr = choice_biblemeta["internalAbbreviation"]
+
+        # 1. Generate a new folder to store the bible in
+        folder_id = str(uuid4())
+        new_bible_folder = os.path.join(propresenter_bible_location, folder_id)
+        shutil.move(bible_folder, new_bible_folder)
+
+        # 2. Adjust metadata such that the abbreviation matches the one we are to overwrite
+        rvmetadata = os.path.join(new_bible_folder, "rvmetadata.xml")
+        xtree = ElementTree.parse(rvmetadata)
+        abbr_tag = xtree.xpath("//abbreviation")[0]
+        name = xtree.xpath("//name")[0].text
+        abbr_tag.text = overwrite_abbr
+
+        with open(rvmetadata, 'wb') as rvmetadata_handle:
+            rvmetadata_handle.write(toxml(xtree))
+
+        # 3. Update the BibleData.proPref
+        bible_data_entry = '|'.join([folder_id, overwrite_abbr, name, "1"])
+        bibledata_json.append(bible_data_entry)
+
+        bibledata_contents_new = "InstalledBiblesNew=" + json.dumps(bibledata_json) + ';\n'
+        bibledata_handle.seek(0)
+        bibledata_handle.write(bibledata_contents_new)
+
 if __name__ == '__main__':
     os.makedirs(download_folder, exist_ok=True)
 
@@ -409,14 +466,22 @@ if __name__ == '__main__':
     process_bible_files(location, usx_folder)
     construct_metadataxmls(output_folder, bible_metadata)
 
-    # create zip of bible files
-    zip_location = os.path.join(output_folder, f"../{selected_bible_abbeviation}.rvbible")
-    shutil.make_archive(zip_location, 'zip', output_folder)
-    rvbible_location = shutil.move(zip_location + ".zip", zip_location)
 
-    print("Moving bible to ProPresenter directory")
+    dialog = radiolist_dialog(
+            "ProPresenter for Windows has two options to load bibles",
+             "1. Overwriting a free bible (Recommended) - The bible that was just downloaded will overwrite this Bible\n2. Sideloading the Bible (Only for advanced users) - This will make sure ProPresenter will load the Bible upon startup. Disadvantages are; potential disk storage leaks and existing bibles might go missing.",
+             values=[(1,'Overwrite (recommended)'), (0,'Sideload')])
+    if platform.system() == "Windows" and dialog.run() == 1:
+            overwrite_free_bible(output_folder)
+    else:
+        # create zip of bible files
+        zip_location = os.path.join(output_folder, f"../{selected_bible_abbeviation}.rvbible")
+        shutil.make_archive(zip_location, 'zip', output_folder)
+        rvbible_location = shutil.move(zip_location + ".zip", zip_location)
 
-    move_rvbible_propresenter_folder(rvbible_location)
+        print("Moving bible to ProPresenter directory")
+
+        move_rvbible_propresenter_folder(rvbible_location)
 
     print("Done! Please restart ProPresenter and check if the bible is correctly installed.")
     input("Press enter to close...")
