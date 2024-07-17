@@ -383,12 +383,20 @@ def overwrite_free_bible(bible_folder):
         free_bibles_json = json.loads(free_bibles_txt)
 
     propresenter_bible_location = os.path.join(program_data, 'RenewedVision\ProPresenter\Bibles')
-    with open(os.path.join(propresenter_bible_location, "BibleData.proPref"), "r+", encoding='utf-8') as bibledata_handle:
-        # reading and parsing of BibleData.proPref - on Windows this stores the bible locations in the folder
-        bibledata_contents = bibledata_handle.read()
-        bibledata_arr_text = re.match(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?", bibledata_contents)
-        bibledata_json: list = json.loads(bibledata_arr_text.group("array"))
-        bible_metadatas = [parse_bible_meta(x) for x in bibledata_json]
+    bible_data_propref_loc = os.path.join(propresenter_bible_location, "BibleData.proPref")
+
+    bibledata_json = []
+    bible_metadatas = []
+    if os.path.isfile(bible_data_propref_loc):
+        with open(bible_data_propref_loc, "r", encoding='utf-8') as bibledata_handle:
+            try:
+                # reading and parsing of BibleData.proPref - on Windows this stores the bible locations in the folder
+                bibledata_contents = bibledata_handle.read()
+                bibledata_arr_text = re.match(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?", bibledata_contents)
+                bibledata_json: list = json.loads(bibledata_arr_text.group("array"))
+                bible_metadatas = [parse_bible_meta(x) for x in bibledata_json]
+            except:
+                pass
 
         # determine which abbreviations are in use to give them back
         used_abbreviations = set(x["abbreviation"] for x in bible_metadatas)
@@ -397,7 +405,7 @@ def overwrite_free_bible(bible_folder):
         print("Choose wisely - Please mind that you will not be able to use this translation anymore!")
 
         while True:
-           choice = prompt('Type to filter', completer=PromptCompleter(prompt_options))
+           choice = prompt('Type to filter: ', completer=PromptCompleter(prompt_options))
            choice_abbr = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower() or x[1].lower() == choice.lower()), None)
            choice_biblemeta = next((x for x in free_bibles_json if x["displayAbbreviation"].lower() == str(choice_abbr).lower()), None)
            if choice_abbr is not None and choice_biblemeta is not None:
@@ -425,10 +433,10 @@ def overwrite_free_bible(bible_folder):
         # 3. Update the BibleData.proPref
         bible_data_entry = '|'.join([folder_id, overwrite_abbr, name, "1"])
         bibledata_json.append(bible_data_entry)
-
         bibledata_contents_new = "InstalledBiblesNew=" + json.dumps(bibledata_json) + ';\n'
-        bibledata_handle.seek(0)
-        bibledata_handle.write(bibledata_contents_new)
+
+        with open(bible_data_propref_loc, "w", encoding='utf-8') as bibledata_handle:
+            bibledata_handle.write(bibledata_contents_new)
 
 if __name__ == '__main__':
     os.makedirs(download_folder, exist_ok=True)
