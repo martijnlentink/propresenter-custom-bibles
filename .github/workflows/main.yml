@@ -23,7 +23,7 @@ jobs:
         python-version: '3.10'
 
     - run: pip install -r requirements.txt pyinstaller
-    - run: pyinstaller -c -F bible_import.py bible_import.spec
+    - run: pyinstaller bible_import.spec
 
     # Make the file executable on macOS
     - name: Make file executable
