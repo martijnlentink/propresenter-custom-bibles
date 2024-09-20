@@ -118,7 +118,7 @@ def retrieve_api_id():
     return api_id
 
 def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bible_metadata):
-    offline_location = bible_metadata["offline"]
+    offline_location = bible_metadata.get("offline", None)
 
     # Download bible using offline yves files
     if offline_location is not None:
