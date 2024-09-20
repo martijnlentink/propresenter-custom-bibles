@@ -292,7 +292,7 @@ def process_bible_files(location, usx_folder):
             file.write(toxml(usx))
 
 def retrieve_bible_metadata(book_id):
-    book_metadata_resp = get(f"https://www.bible.com/api/bible/version/{book_id}")
+    book_metadata_resp = get(f"https://nodejs.bible.com/api/bible/version/3.3?id={book_id}")
     return book_metadata_resp.json()
 
 def construct_metadataxmls(output_file_loc, book_metadata):
