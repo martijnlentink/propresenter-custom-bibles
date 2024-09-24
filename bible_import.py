@@ -178,14 +178,23 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
 
 def parse_chapter(parent, chapter):
     chapter_num = chapter.attrib["data-usfm"].split(".")[-1]
-    SubElement(parent, 'chapter', number=chapter_num, style='c')
 
-    for el in chapter:
-        heading = el.xpath(".//*[contains(@class,'heading')]")
-        if len(heading) > 0:
-            parse_header(parent, heading)
-        else:
-            parse_paragraph(parent, el, "p")
+    try:
+        chapter_num = str(int(chapter_num))
+    except:
+        pass
+
+    if chapter_num.isnumeric():
+        SubElement(parent, 'chapter', number=chapter_num, style='c')
+
+        for el in chapter:
+            heading = el.xpath(".//*[contains(@class,'heading')]")
+            if len(heading) > 0:
+                parse_header(parent, heading)
+            else:
+                parse_paragraph(parent, el, "p")
+    else:
+        print(f"[SKIPPING CHAPTER] Bible chapter has invalid chapter number: {chapter_num}")
 
 def parse_verse_numbers(verse_label: str, verse):
     verse_input = verse_label.strip()
