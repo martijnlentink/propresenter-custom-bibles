@@ -321,6 +321,7 @@ def construct_metadataxmls(output_file_loc, book_metadata):
 
     book_names_el = xml_tree.xpath("//bookNames")[0]
     books_el = xml_tree.xpath("//bookList/books")[0]
+    unique_short_list = []
 
     for book in book_metadata["books"]:
         book_code = book['usfm']
@@ -330,10 +331,12 @@ def construct_metadataxmls(output_file_loc, book_metadata):
         abbr = book['abbreviation']
         book_el = SubElement(book_names_el, "book", code=book_code)
         SubElement(book_el, 'long').text = long
-        SubElement(book_el, 'short').text = short
+        SubElement(book_el, 'short').text = short if short not in unique_short_list else long
         SubElement(book_el, 'abbr').text = abbr
 
         SubElement(books_el, "book", code=book_code)
+
+        unique_short_list.append(short)
 
     metadataxml_output = os.path.join(output_file_loc, "metadata.xml")
     with open(metadataxml_output, 'wb') as handle:
