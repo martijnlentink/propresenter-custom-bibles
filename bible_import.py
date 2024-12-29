@@ -97,7 +97,7 @@ def choose_language():
         name = lang_version["name"]
         return local_name if local_name == name else f"{local_name} ({name})"
 
-    prompt_options = {gen_name(x): x["iso_639_3"] for x in lang_versions }
+    prompt_options = {gen_name(x): x["language_tag"] for x in lang_versions }
 
     print("Choose the language you want to retrieve")
     while True:
