@@ -1,6 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-
-
+import sys
 a = Analysis(
     ['bible_import.py'],
     pathex=['.venv\\Lib\\site-packages'],
@@ -31,7 +30,7 @@ exe = EXE(
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch='universal2',
+    target_arch='universal2' if sys.platform == 'darwin' else None,
     codesign_identity=None,
     entitlements_file=None,
 )
