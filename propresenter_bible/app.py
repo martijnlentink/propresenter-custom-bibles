@@ -118,3 +118,13 @@ class BibleImportApp:
         rvbible_location = self._zip_bible_dir(output_dir, abbr)
         print("Moving bible to ProPresenter directory")
         self.installer.move_rvbible_propresenter_folder(rvbible_location)
+
+    # ---- Management (non-interactive) ----
+    def list_installed(self):
+        return self.installer.list_installed()
+
+    def delete_installed(self, folder_id: str) -> None:
+        self.installer.delete_installed(folder_id)
+
+    def reassign_abbreviation(self, folder_id: str, new_internal_abbr: str) -> None:
+        self.installer.reassign_abbreviation(folder_id, new_internal_abbr)
