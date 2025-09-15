@@ -61,11 +61,16 @@ class BibleDownloader:
             return
 
         # Online per-page download
-        next_usfm = version_meta["books"][0]["chapters"][0]["usfm"]
+        next_usfm = version_meta.books[0].chapters[0].usfm
         retries = 5
         build_id = self._api.get_build_id()
 
-        reporter.start("Retrieve bible chapters")
+        # Set determinate progress based on total number of chapters, if available
+        try:
+            total_chapters = sum(len(b.chapters) for b in version_meta.books)
+        except Exception:
+            total_chapters = None
+        reporter.start("Retrieve bible chapters", total=total_chapters)
         while next_usfm is not None:
             try:
                 reporter.set_description(f"Retrieving {next_usfm}")

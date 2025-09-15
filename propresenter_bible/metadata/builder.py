@@ -46,9 +46,9 @@ class MetadataBuilder:
             handle.write(toxml(xml_tree))
 
         root = Element("RVBibleMetdata")
-        SubElement(root, "name").text = book_metadata["local_title"]
-        SubElement(root, "abbreviation").text = book_metadata["abbreviation"]
-        SubElement(root, "displayAbbreviation").text = book_metadata["local_abbreviation"]
+        SubElement(root, "name").text = book_metadata.local_title
+        SubElement(root, "abbreviation").text = book_metadata.abbreviation
+        SubElement(root, "displayAbbreviation").text = book_metadata.local_abbreviation
         SubElement(root, "version").text = "1"
         SubElement(root, "revision").text = "0"
         SubElement(root, "licenseType").text = "0"

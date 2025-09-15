@@ -76,5 +76,15 @@ def manage_reassign_cmd(folder_id: str, new_abbr: str):
         click.echo(f"Error: {ve}")
 
 
+@cli.command(name="gui")
+def gui_cmd():
+    """Launch the GUI."""
+    try:
+        from propresenter_bible.gui.app_gui import run_gui
+        run_gui()
+    except Exception as e:
+        click.echo(f"Failed to launch GUI: {e}")
+
+
 if __name__ == '__main__':
     cli()

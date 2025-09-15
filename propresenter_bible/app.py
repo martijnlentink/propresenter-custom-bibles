@@ -15,14 +15,14 @@ from .parsing.html_to_usx import HtmlToUsxParser
 from .building.usx_builder import UsxBuilder
 from .metadata.builder import MetadataBuilder
 from .install.installer import get_installer, InstallerBase
-from .ui.prompting import choose_language
+from .ui.interface import Ui, ConsoleUi
 from .progress import ConsoleProgressReporter
 import click
 from pathlib import Path
 
 
 class BibleImportApp:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, ui: Ui | None = None):
         """Initialize the app with configuration and core services."""
         self.cfg = cfg
         self.api = BibleApiClient(cfg)
@@ -32,6 +32,7 @@ class BibleImportApp:
         self.usx = UsxBuilder(self.parser)
         self.meta = MetadataBuilder()
         self.installer: InstallerBase = get_installer()
+        self.ui: Ui = ui or ConsoleUi()
 
     def run_interactive(self) -> None:
         """Run an interactive CLI workflow to import and install a Bible."""
@@ -53,36 +54,33 @@ class BibleImportApp:
         input("Press enter to close...")
 
     def _prompt_language(self) -> str:
-        click.echo("Which language would you want to download?")
-        return choose_language(self.api)
+        self.ui.info("Which language would you want to download?")
+        return self.ui.choose_language(self.api)
 
     def _prompt_version(self, language: str) -> VersionsItem:
         versions: VersionsResponse = self.api.get_versions(language)
         by_id = {v.id: v for v in versions.versions}
-        options_text = "\n".join([f"{v.id}: {v.local_title} ({v.local_abbreviation})" for v in by_id.values()])
-        print(options_text)
-        selected_id = click.prompt("Please select the number above to download the scripture", type=int)
-        return by_id[selected_id]
+        return self.ui.select_version(list(by_id.values()))
 
-    def _download_if_needed(self, location: Path, version: VersionsItem, metadata: VersionMetadata) -> None:
-        need_download = not location.exists() or click.confirm(
+    def _download_if_needed(self, location: Path, version: VersionsItem, metadata: VersionMetadata, reporter=None) -> None:
+        need_download = True if not location.exists() else self.ui.confirm(
             f"It appears that there is already a download folder for bible {version.local_abbreviation}. Are you sure you want to download the bible contents?"
         )
         if not need_download:
             return
-        print(f"Starting download {version.local_title}")
+        self.ui.info(f"Starting download {version.local_title}")
         location.mkdir(parents=True, exist_ok=True)
-        reporter = ConsoleProgressReporter()
-        self.downloader.download(str(location), version.id, version.local_abbreviation, metadata, reporter=reporter)
+        rep = reporter or ConsoleProgressReporter()
+        self.downloader.download(str(location), version.id, version.local_abbreviation, metadata, reporter=rep)
 
-    def _build_outputs(self, location: Path, output_dir: Path, metadata: VersionMetadata) -> None:
+    def _build_outputs(self, location: Path, output_dir: Path, metadata: VersionMetadata, reporter=None) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
-        print("Converting chapters to valid USX format")
+        self.ui.info("Converting chapters to valid USX format")
         book_names = {b.usfm: b.human for b in metadata.books}
-        reporter = ConsoleProgressReporter()
+        rep = reporter or ConsoleProgressReporter()
         usx_out = output_dir / "USX_1"
         usx_out.mkdir(parents=True, exist_ok=True)
-        self.usx.build_from_downloads(str(location), str(usx_out), book_names=book_names, reporter=reporter)
+        self.usx.build_from_downloads(str(location), str(usx_out), book_names=book_names, reporter=rep)
         self.meta.build(str(output_dir), metadata)
 
     def _zip_bible_dir(self, output_dir: Path, abbr: str) -> str:
@@ -103,20 +101,20 @@ class BibleImportApp:
                 from prompt_toolkit import prompt
                 from .ui.prompting import PromptCompleter
                 prompt_options = {f"{x['language']} - {x['name']}": x["displayAbbreviation"] for x in choices}
-                print("Which translation would you like to overwrite?")
-                print("Choose wisely - Please mind that you will not be able to use this translation anymore!")
+                self.ui.info("Which translation would you like to overwrite?")
+                self.ui.info("Choose wisely - Please mind that you will not be able to use this translation anymore!")
                 while True:
                     choice = prompt('Type to filter: ', completer=PromptCompleter(prompt_options))
                     choice_abbr = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower() or x[1].lower() == choice.lower()), None)
                     choice_biblemeta = next((x for x in choices if x["displayAbbreviation"].lower() == str(choice_abbr).lower()), None)
                     if choice_abbr is not None and choice_biblemeta is not None:
                         break
-                    print("Please select one of the abbreviations from the list")
+                    self.ui.warn("Please select one of the abbreviations from the list")
                 self.installer.overwrite_free_bible(str(output_dir), choice_biblemeta["internalAbbreviation"])  # type: ignore[index]
                 return
 
         rvbible_location = self._zip_bible_dir(output_dir, abbr)
-        print("Moving bible to ProPresenter directory")
+        self.ui.info("Moving bible to ProPresenter directory")
         self.installer.move_rvbible_propresenter_folder(rvbible_location)
 
     # ---- Management (non-interactive) ----
