@@ -18,10 +18,19 @@ import click
 from propresenter_bible import BibleImportApp, DEFAULT_CONFIG
 
 
-@click.group()
-def cli():
-    """ProPresenter Bible tools."""
-    pass
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx):
+    """ProPresenter Bible tools.
+
+    If no subcommand is provided, the GUI is launched.
+    """
+    if ctx.invoked_subcommand is None:
+        try:
+            from propresenter_bible.gui.app_gui import run_gui
+            run_gui()
+        except Exception as e:
+            click.echo(f"Failed to launch GUI: {e}")
 
 
 @cli.command(name="import-bible")

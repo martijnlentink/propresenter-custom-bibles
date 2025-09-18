@@ -15,6 +15,7 @@ A clear and concise description of what the bug is.
 - At which step in the process did this happen?
 - Which translation did you try to download?
 - What OS are you running it on?
+- Which version of ProPresenter are you using?
 - Did you run the executable or the Python script?
 
 **Expected behavior**

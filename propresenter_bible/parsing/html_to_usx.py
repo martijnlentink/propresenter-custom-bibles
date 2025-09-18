@@ -13,9 +13,26 @@ from ..models import Book, Chapter, Paragraph, Verse
 
 class HtmlToUsxParser:
     def cleanup_verse_contents(self, text):
+        """Normalize spacing and punctuation quirks in verse text.
+
+        Notes:
+        - Collapse extra spaces but keep newlines intact: ``([^\S\n])+`` matches
+          any run of whitespace characters that are not a newline.
+        - Remove stray spaces around smart quotes and punctuation pairs, e.g.
+          "word ” , next" -> "word”, next". The character class includes common
+          quote glyphs: “ ” ‘ ’ « » ‹ › „ ‚ etc.
+        - Remove spaces between consecutive punctuation marks such as ", ; : ! .".
+        - Bible.com historically included the paragraph sign (¶) in some verses
+          (see ISA 27:2 NASB2020). We strip that character.
+          Example URL: https://www.bible.com/bible/2692/ISA.27.2.NASB2020
+        """
+        # Remove multiple whitespaces, but do not collapse newlines.
         a = re.sub(r"([^\S\n])+", r"\1", text)
+        # Remove spaces around quotes followed/preceded by punctuation.
         a = re.sub(r"([\"'“”‘’«»‹›„‚”’])[^\S\n]+([\"'“”‘’«»‹›„‚”’.,!:;])", r"\1\2", a)
+        # Remove spaces between consecutive punctuation marks.
         a = re.sub(r"([.,!:;])[^\S\n]+([.,!:;])", r"\1\2", a)
+        # Historically present in some sources – remove paragraph sign.
         a = a.replace('¶', '')
         return a
 

@@ -50,7 +50,6 @@ class DropdownSearch(ttk.Frame):
         self.entry.bind('<Return>', lambda e: self._choose())
         self.entry.bind('<Escape>', lambda e: self._hide_drop())
         self.entry.bind('<Button-1>', lambda e: self._show_drop())
-        self.entry.bind('<FocusIn>', lambda e: self._show_drop())
         self.entry.bind('<Escape>', lambda e: self._hide_drop())
         self._list.bind('<ButtonRelease-1>', self._choose)
         self._list.bind('<Return>', self._choose)
@@ -79,6 +78,9 @@ class DropdownSearch(ttk.Frame):
             pass
 
     def _on_key(self, event):
+        if not event.char:
+            return
+        
         typed = self.var.get().lower()
         if not typed:
             self._update_list(self._all_values)
@@ -209,7 +211,6 @@ class AppGUI:
         self._lang_map: Dict[str, str] = {}
         self._version_map: Dict[str, VersionsItem] = {}
         self._load_languages()
-        self._refresh_installed()
 
     def _build_ui(self) -> None:
         nb = ttk.Notebook(self.root)
@@ -219,7 +220,6 @@ class AppGUI:
         self.frame_manage = ttk.Frame(nb)
         self.frame_propresenter = ttk.Frame(nb)
         nb.add(self.frame_import, text="Import")
-        nb.add(self.frame_manage, text="Manage")
         nb.add(self.frame_propresenter, text="ProPresenter")
 
         # Import tab
@@ -250,42 +250,45 @@ class AppGUI:
 
         self.frame_import.columnconfigure(1, weight=1)
 
-        # Manage tab (Installed custom bibles)
-        self.installed_tree = ttk.Treeview(self.frame_manage, columns=("abbr", "name", "format"), show='headings', height=12)
-        self.installed_tree.heading("abbr", text="Abbreviation")
-        self.installed_tree.heading("name", text="Name")
-        self.installed_tree.heading("format", text="Format")
-        self.installed_tree.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=6, pady=6)
-        self.frame_manage.rowconfigure(0, weight=1)
-        self.frame_manage.columnconfigure(0, weight=1)
-
-        self.btn_refresh = ttk.Button(self.frame_manage, text="Refresh", command=self._refresh_installed)
-        self.btn_refresh.grid(row=1, column=0, sticky='w', padx=6, pady=6)
-
-        self.btn_delete = ttk.Button(self.frame_manage, text="Delete Selected", command=self._delete_selected)
-        self.btn_delete.grid(row=1, column=2, sticky='e', padx=6, pady=6)
-        self.btn_change_abbr = ttk.Button(self.frame_manage, text="Change Abbreviation", command=self._change_abbr_dialog)
-        self.btn_change_abbr.grid(row=1, column=1, sticky='e', padx=6, pady=6)
 
         # ProPresenter tab (Available overwrite bibles)
-        self.free_tree = ttk.Treeview(self.frame_propresenter, columns=("language", "name", "display", "internal", "origin", "location"), show='headings', height=14)
+        # Show available vs installed side-by-side for clarity
+        columns = ("language", "name_avail", "name_inst", "disp_avail", "disp_inst", "internal", "state", "location")
+        self.free_tree = ttk.Treeview(self.frame_propresenter, columns=columns, show='headings', height=14)
         for col, title in (
             ("language", "Language"),
-            ("name", "Name"),
-            ("display", "Display Abbr"),
+            ("name_avail", "Name (Available)"),
+            ("name_inst", "Name (Installed)"),
+            ("disp_avail", "Display (Available)"),
+            ("disp_inst", "Display (Installed)"),
             ("internal", "Internal Abbr"),
-            ("origin", "Origin"),
+            ("state", "State"),
             ("location", "Location"),
         ):
             self.free_tree.heading(col, text=title)
             self.free_tree.heading(col, command=lambda c=col: self._sort_tree(self.free_tree, c, False))
-        self.free_tree.grid(row=0, column=0, columnspan=2, sticky='nsew', padx=6, pady=6)
+        self.free_tree.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=6, pady=6)
         self.frame_propresenter.rowconfigure(0, weight=1)
         self.frame_propresenter.columnconfigure(0, weight=1)
         self.btn_refresh_free = ttk.Button(self.frame_propresenter, text="Refresh", command=self._load_propresenter_tab)
         self.btn_refresh_free.grid(row=1, column=0, sticky='w', padx=6, pady=6)
-        self.btn_overwrite_select = ttk.Button(self.frame_propresenter, text="Set Overwrite Target From Selection", command=self._select_overwrite_from_free)
-        self.btn_overwrite_select.grid(row=1, column=1, sticky='e', padx=6, pady=6)
+        # Hide Free toggle
+        self.hide_free_var = tk.BooleanVar(value=False)
+        self.chk_hide_free = ttk.Checkbutton(self.frame_propresenter, text="Hide free", variable=self.hide_free_var, command=self._load_propresenter_tab)
+        self.chk_hide_free.grid(row=2, column=0, sticky='w', padx=6, pady=6)
+        # Manage actions on this tab
+        self.btn_change_abbr = ttk.Button(self.frame_propresenter, text="Change Abbreviation", command=self._change_abbr_selected, state='disabled')
+        self.btn_change_abbr.grid(row=1, column=2, sticky='e', padx=6, pady=6)
+        self.btn_delete_inst = ttk.Button(self.frame_propresenter, text="Delete Installed", command=self._delete_selected_installed, state='disabled')
+        self.btn_delete_inst.grid(row=2, column=2, sticky='e', padx=6, pady=6)
+        # Row tag colors by state
+        try:
+            self.free_tree.tag_configure('Free', background='#d9fdd3')
+            self.free_tree.tag_configure('Original', background='#e8f1ff')
+            self.free_tree.tag_configure('Overridden', background='#fff0b3')
+        except Exception:
+            pass
+        self.free_tree.bind('<<TreeviewSelect>>', self._on_free_select)
 
         # Status / Progress bar
         self.status_var = tk.StringVar(value="Ready")
@@ -306,7 +309,7 @@ class AppGUI:
             self.lang_input.set_values(list(self._lang_map.keys()))
             if self._lang_map:
                 # pick first as default
-                self.lang_input.set_text(next(iter(self._lang_map.keys())))
+                # self.lang_input.set_text(next(iter(self._lang_map.keys())))
                 self._load_versions()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load languages: {e}")
@@ -322,7 +325,7 @@ class AppGUI:
             try:
                 self.chk_overwrite.grid_remove()
                 self.lbl_overwrite.grid_remove()
-                self.overwrite_combo.grid_remove()
+                self.overwrite_input.grid_remove()
             except Exception:
                 pass
 
@@ -380,17 +383,6 @@ class AppGUI:
             
         threading.Thread(target=worker, daemon=True).start()
 
-    def _refresh_installed(self) -> None:
-        # Clear
-        for item in self.installed_tree.get_children():
-            self.installed_tree.delete(item)
-        try:
-            entries = self.app.list_installed()
-        except NotImplementedError:
-            # Not supported on this platform
-            return
-        for e in entries:
-            self.installed_tree.insert('', 'end', iid=e.folder_id, values=(e.abbreviation, e.name, e.bible_format))
 
     def _install_mode_changed(self) -> None:
         # Enable/disable overwrite combobox depending on checkbox and platform support
@@ -427,6 +419,7 @@ class AppGUI:
                 info = self.app.installer.get_overwrite_info()
             except Exception:
                 info = {}
+            self._overwrite_info = info
             for fb in free:
                 internal = fb["internalAbbreviation"]
                 lower = internal.lower()
@@ -434,51 +427,79 @@ class AppGUI:
                 if meta:
                     origin = meta.get('status', 'Original')
                     loc = meta.get('location', '')
-                    display = meta.get('displayAbbreviation') or fb["displayAbbreviation"]
+                    disp_inst = meta.get('displayAbbreviation') or ''
+                    name_inst = meta.get('name') or ''
                 else:
-                    # Free slot
                     origin = 'Free'
                     loc = ''
-                    display = fb["displayAbbreviation"]
-                self.free_tree.insert('', 'end', iid=internal, values=(fb["language"], fb["name"], display, internal, origin, loc))
+                    disp_inst = ''
+                    name_inst = ''
+                # Optionally hide free entries
+                if self.hide_free_var.get() and origin == 'Free':
+                    continue
+                # Available values from JSON
+                lang = fb.get('language', '')
+                name_avail = fb.get('name', '')
+                disp_avail = fb.get('displayAbbreviation', '')
+                self.free_tree.insert('', 'end', iid=internal, values=(lang, name_avail, name_inst, disp_avail, disp_inst, internal, origin, loc), tags=(origin,))
+            # update buttons state
+            self._on_free_select()
         except Exception:
             # silently ignore if not supported
             pass
 
-    def _select_overwrite_from_free(self) -> None:
-        # Select an entry from free_tree as overwrite target
-        selection = self.free_tree.selection()
-        if not selection:
-            return
-        internal = selection[0]
-        # Find matching label
-        for label, abbr in self._overwrite_map.items():
-            if abbr == internal:
-                self.overwrite_var.set(True)
-                self._install_mode_changed()
-                self.overwrite_choice_var.set(label)
-                break
-
-    # ---- Sorting helpers ----
-    def _sort_tree(self, tree: ttk.Treeview, col: str, reverse: bool):
-        data = [(tree.set(k, col), k) for k in tree.get_children('')]
+    # Selection and manage actions on ProPresenter tab
+    def _on_free_select(self, event=None) -> None:
+        sel = self.free_tree.selection()
+        installed = False
+        if sel:
+            vals = self.free_tree.item(sel[0], 'values')
+            state = vals[6] if len(vals) > 6 else ''
+            installed = state in ('Original', 'Overridden')
+        state_val = 'normal' if installed else 'disabled'
         try:
-            data.sort(key=lambda t: (t[0] is None, t[0]))
+            self.btn_change_abbr.configure(state=state_val)
+            self.btn_delete_inst.configure(state=state_val)
         except Exception:
-            data.sort(key=lambda t: str(t[0]).lower())
-        if reverse:
-            data.reverse()
-        for index, (_, k) in enumerate(data):
-            tree.move(k, '', index)
-        tree.heading(col, command=lambda c=col: self._sort_tree(tree, c, not reverse))
+            pass
 
-    # ---- Manage: Change Abbreviation ----
-    def _change_abbr_dialog(self) -> None:
-        selection = self.installed_tree.selection()
-        if not selection:
-            messagebox.showwarning("Select", "Please select an installed bible")
+    def _delete_selected_installed(self) -> None:
+        sel = self.free_tree.selection()
+        if not sel:
             return
-        folder_id = selection[0]
+        vals = self.free_tree.item(sel[0], 'values')
+        state = vals[6] if len(vals) > 6 else ''
+        loc = vals[7] if len(vals) > 7 else ''
+        if state not in ('Original', 'Overridden'):
+            return
+        import os
+        folder_id = os.path.basename(loc) if loc else ''
+        if not folder_id:
+            return
+        if not messagebox.askyesno('Confirm', f'Delete installed bible {folder_id}? This cannot be undone.'):
+            return
+        try:
+            self.app.delete_installed(folder_id)
+            self._load_propresenter_tab()
+        except Exception as e:
+            messagebox.showerror('Error', f'Failed: {e}')
+
+    def _change_abbr_selected(self) -> None:
+        sel = self.free_tree.selection()
+        if not sel:
+            return
+        vals = self.free_tree.item(sel[0], 'values')
+        state = vals[6] if len(vals) > 6 else ''
+        loc = vals[7] if len(vals) > 7 else ''
+        if state not in ('Original', 'Overridden'):
+            return
+        import os
+        folder_id = os.path.basename(loc) if loc else ''
+        if not folder_id:
+            return
+        self._change_abbr_dialog_for_folder(folder_id)
+
+    def _change_abbr_dialog_for_folder(self, folder_id: str) -> None:
         dlg = tk.Toplevel(self.root)
         dlg.title("Change Abbreviation")
         ttk.Label(dlg, text=f"For folder: {folder_id}").grid(row=0, column=0, columnspan=2, sticky='w', padx=6, pady=6)
@@ -491,7 +512,6 @@ class AppGUI:
             ac.grid(row=1, column=1, sticky='ew', padx=6, pady=6)
             choices = self.app.installer.get_available_overwrite_choices()
             for c in choices:
-                # Same labeling as overwrite target: "Language - Name (Display)"
                 label = f"{c['language']} - {c['name']} ({c['displayAbbreviation']})"
                 label_map[label] = c['internalAbbreviation']
             labels = list(label_map.keys())
@@ -514,25 +534,26 @@ class AppGUI:
             try:
                 self.app.reassign_abbreviation(folder_id, new_abbr)
                 dlg.destroy()
-                self._refresh_installed()
                 self._load_propresenter_tab()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed: {e}")
 
         ttk.Button(dlg, text="OK", command=on_ok).grid(row=2, column=1, sticky='e', padx=6, pady=6)
 
-    def _delete_selected(self) -> None:
-        selection = self.installed_tree.selection()
-        if not selection:
-            return
-        folder_id = selection[0]
-        if not messagebox.askyesno("Confirm", f"Delete installed bible {folder_id}? This cannot be undone."):
-            return
+    # ---- Sorting helpers ----
+    def _sort_tree(self, tree: ttk.Treeview, col: str, reverse: bool):
+        data = [(tree.set(k, col), k) for k in tree.get_children('')]
         try:
-            self.app.delete_installed(folder_id)
-            self._refresh_installed()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed: {e}")
+            data.sort(key=lambda t: (t[0] is None, t[0]))
+        except Exception:
+            data.sort(key=lambda t: str(t[0]).lower())
+        if reverse:
+            data.reverse()
+        for index, (_, k) in enumerate(data):
+            tree.move(k, '', index)
+        tree.heading(col, command=lambda c=col: self._sort_tree(tree, c, not reverse))
+
+    # (Removed: Manage tab handlers)
 
     def run(self) -> None:
         self.root.mainloop()

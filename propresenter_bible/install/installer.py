@@ -231,12 +231,20 @@ class WindowsInstaller(InstallerBase):
                 folder = root / meta["id"]
                 # Determine rightsHolderAbbreviation
                 rights = None
+                installed_name = None
                 try:
                     mpath = folder / 'metadata.xml'
                     if mpath.is_file():
                         xt = ElementTree.parse(str(mpath))
                         node = xt.xpath('//DBLMetadata/contact/rightsHolderAbbreviation')
                         rights = node[0].text if node else None
+                        # Try to get installed name (prefer local name if you want)
+                        n = xt.xpath('//identification/name')
+                        if n:
+                            installed_name = n[0].text
+                        else:
+                            nloc = xt.xpath('//identification/nameLocal')
+                            installed_name = nloc[0].text if nloc else None
                 except Exception:
                     rights = None
                 # displayAbbreviation from rvmetadata.xml
@@ -254,6 +262,7 @@ class WindowsInstaller(InstallerBase):
                     'status': status,
                     'location': str(folder),
                     'displayAbbreviation': display,
+                    'name': installed_name,
                 }
         except Exception:
             return info
@@ -343,6 +352,7 @@ class MacInstaller(InstallerBase):
         for f in sideload.glob('*.rvbible'):
             rights = None
             display = None
+            installed_name = None
             try:
                 with zipfile.ZipFile(f, 'r') as zf:
                     # metadata.xml
@@ -351,6 +361,12 @@ class MacInstaller(InstallerBase):
                             xt = ElementTree.parse(m)
                             node = xt.xpath('//DBLMetadata/contact/rightsHolderAbbreviation')
                             rights = node[0].text if node else None
+                            nn = xt.xpath('//identification/name')
+                            if nn:
+                                installed_name = nn[0].text
+                            else:
+                                nnl = xt.xpath('//identification/nameLocal')
+                                installed_name = nnl[0].text if nnl else None
                     except Exception:
                         rights = None
                     # rvmetadata.xml
@@ -365,7 +381,7 @@ class MacInstaller(InstallerBase):
                 pass
             status = 'Overridden' if rights == 'NBV21' else 'Original'
             key = f.stem.lower()
-            info[key] = {'status': status, 'location': str(f), 'displayAbbreviation': display}
+            info[key] = {'status': status, 'location': str(f), 'displayAbbreviation': display, 'name': installed_name}
         return info
 
 
