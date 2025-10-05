@@ -63,6 +63,22 @@ class InstallerBase:
                 return c
         return candidates[0]
 
+    def get_backup_items(self) -> List[tuple[str, Path]]:
+        """Return a list of (label, path) items to back up.
+
+        Labels are used as destination subfolders. Implementations should return
+        the minimal set of locations that represent the current Bible state for
+        the platform (e.g., a single root on Windows, sideload dirs on macOS).
+        """
+        raise NotImplementedError
+
+    def get_restore_targets(self) -> List[tuple[str, Path]]:
+        """Return a list of (label, destination_path) that can be restored to.
+
+        Labels must correspond to those produced by get_backup_items().
+        """
+        raise NotImplementedError
+
     def get_bibles_root_dir(self) -> Optional[Path]:
         """Root dir where BibleData.proPref lives (if applicable to the OS)."""
         return None
@@ -109,6 +125,17 @@ class InstallerBase:
         """
         return {}
 
+    def plan_dangling_cleanup(self) -> dict:
+        """Return a plan describing dangling installs to remove.
+
+        Should return a dict with keys:
+          - folder_ids: list[str]
+          - total_size: int (bytes)
+
+        Platforms that do not support this should raise NotImplementedError.
+        """
+        raise NotImplementedError("Dangling cleanup is not supported on this platform")
+
 
 @dataclass
 class InstalledBibleEntry:
@@ -132,6 +159,14 @@ class WindowsInstaller(InstallerBase):
         import os as _os
         base = _os.getenv('PROGRAMDATA')
         return Path(base) / 'RenewedVision' / 'ProPresenter' / 'Bibles' if base else None
+
+    def get_backup_items(self) -> List[tuple[str, Path]]:
+        root = self.get_bibles_root_dir()
+        return [('Bibles', root)] if root else []
+
+    def get_restore_targets(self) -> List[tuple[str, Path]]:
+        root = self.get_bibles_root_dir()
+        return [('Bibles', root)] if root else []
 
     def read_installed_bibledata(self) -> List[str]:
         root = self.get_bibles_root_dir()
@@ -197,6 +232,63 @@ class WindowsInstaller(InstallerBase):
 
     def list_installed(self) -> List[InstalledBibleEntry]:
         return self._load_entries()
+
+    # ---------- Dangling cleanup (Windows only) ----------
+    def _dir_size(self, path: Path) -> int:
+        total = 0
+        try:
+            for p in path.rglob('*'):
+                if p.is_file():
+                    try:
+                        total += p.stat().st_size
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return total
+
+    def plan_dangling_cleanup(self) -> dict:
+        """Return a plan for cleaning dangling installs.
+
+        A "dangling" install is an installed entry whose abbreviation matches the
+        name of an .rvbible file present in the sideload directory.
+
+        Returns a dict with keys:
+          - folder_ids: list[str]
+          - total_size: int (bytes)
+        """
+        root = self.get_bibles_root_dir()
+        if not root:
+            return {"folder_ids": [], "total_size": 0}
+        # Collect sideload abbreviations from filenames
+        sideload_abbrs = set()
+        for d in self.get_sideload_dirs():
+            if not d or not d.exists():
+                continue
+            for f in d.glob('*.rvbible'):
+                try:
+                    sideload_abbrs.add(f.stem.lower())
+                except Exception:
+                    pass
+        if not sideload_abbrs:
+            return {"folder_ids": [], "total_size": 0}
+
+        # Match against installed entries
+        candidates: List[str] = []
+        for e in self._load_entries():
+            try:
+                if e.name.lower() in sideload_abbrs:
+                    candidates.append(e.folder_id)
+            except Exception:
+                pass
+
+        # Compute total size for those folders
+        total_size = 0
+        for fid in candidates:
+            p = root / fid
+            if p.exists() and p.is_dir():
+                total_size += self._dir_size(p)
+        return {"folder_ids": candidates, "total_size": total_size}
 
     def delete_installed(self, folder_id: str) -> None:
         root = self.get_bibles_root_dir()
@@ -298,6 +390,21 @@ class MacInstaller(InstallerBase):
         user_path = Path.home() / rel
         system_path = Path('/') / rel
         return [user_path, system_path]
+
+    def get_backup_items(self) -> List[tuple[str, Path]]:
+        items: List[tuple[str, Path]] = []
+        for p in self.get_sideload_dirs():
+            if not p.exists():
+                continue
+            label = 'RVBibles_user' if str(p).startswith(str(Path.home())) else 'RVBibles_system'
+            items.append((label, p))
+        return items
+
+    def get_restore_targets(self) -> List[tuple[str, Path]]:
+        rel = Path('Library') / 'Application Support' / 'RenewedVision' / 'RVBibles' / 'v2'
+        user_path = Path.home() / rel
+        system_path = Path('/') / rel
+        return [('RVBibles_user', user_path), ('RVBibles_system', system_path)]
 
     # On macOS, ProPresenter consumes .rvbible files placed in the sideload dir.
     # There is no BibleData.proPref to mutate, so management is file-based.

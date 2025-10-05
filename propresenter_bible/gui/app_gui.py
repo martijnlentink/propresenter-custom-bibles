@@ -267,20 +267,36 @@ class AppGUI:
         ):
             self.free_tree.heading(col, text=title)
             self.free_tree.heading(col, command=lambda c=col: self._sort_tree(self.free_tree, c, False))
-        self.free_tree.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=6, pady=6)
+        self.free_tree.grid(row=0, column=0, columnspan=2, sticky='nsew', padx=6, pady=6)
         self.frame_propresenter.rowconfigure(0, weight=1)
         self.frame_propresenter.columnconfigure(0, weight=1)
-        self.btn_refresh_free = ttk.Button(self.frame_propresenter, text="Refresh", command=self._load_propresenter_tab)
-        self.btn_refresh_free.grid(row=1, column=0, sticky='w', padx=6, pady=6)
+        self.frame_propresenter.columnconfigure(1, weight=1)
+
+        # Bible Operations group (left)
+        lf_bible = ttk.LabelFrame(self.frame_propresenter, text="Operations")
+        lf_bible.grid(row=1, column=0, sticky='w', padx=6, pady=6)
+        self.btn_refresh_free = ttk.Button(lf_bible, text="Refresh", command=self._load_propresenter_tab)
+        self.btn_refresh_free.grid(row=0, column=0, sticky='w', padx=6, pady=6)
+        self.btn_change_abbr = ttk.Button(lf_bible, text="Change Abbreviation", command=self._change_abbr_selected, state='disabled')
+        self.btn_change_abbr.grid(row=0, column=1, sticky='w', padx=6, pady=6)
+        self.btn_delete_inst = ttk.Button(lf_bible, text="Delete Installed", command=self._delete_selected_installed, state='disabled')
+        self.btn_delete_inst.grid(row=0, column=2, sticky='w', padx=6, pady=6)
+
+        # Workspace Operations group (right)
+        lf_ws = ttk.LabelFrame(self.frame_propresenter, text="Bibles directory")
+        lf_ws.grid(row=1, column=1, sticky='e', padx=6, pady=6)
+        self.btn_backup = ttk.Button(lf_ws, text="Backup...", command=self._backup_action)
+        self.btn_backup.grid(row=0, column=0, sticky='e', padx=6, pady=6)
+        self.btn_restore = ttk.Button(lf_ws, text="Restore...", command=self._restore_action)
+        self.btn_restore.grid(row=0, column=1, sticky='e', padx=6, pady=6)
+        if self.app.installer.supports_overwrite:
+            self.btn_cleanup = ttk.Button(lf_ws, text="Cleanup dangling sideloads", command=self._cleanup_dangling_action)
+            self.btn_cleanup.grid(row=0, column=2, sticky='e', padx=6, pady=6)
         # Hide Free toggle
         self.hide_free_var = tk.BooleanVar(value=False)
         self.chk_hide_free = ttk.Checkbutton(self.frame_propresenter, text="Hide free", variable=self.hide_free_var, command=self._load_propresenter_tab)
         self.chk_hide_free.grid(row=2, column=0, sticky='w', padx=6, pady=6)
-        # Manage actions on this tab
-        self.btn_change_abbr = ttk.Button(self.frame_propresenter, text="Change Abbreviation", command=self._change_abbr_selected, state='disabled')
-        self.btn_change_abbr.grid(row=1, column=2, sticky='e', padx=6, pady=6)
-        self.btn_delete_inst = ttk.Button(self.frame_propresenter, text="Delete Installed", command=self._delete_selected_installed, state='disabled')
-        self.btn_delete_inst.grid(row=2, column=2, sticky='e', padx=6, pady=6)
+        # Manage actions bound to tree selection handled below
         # Row tag colors by state
         try:
             self.free_tree.tag_configure('Free', background='#d9fdd3')
@@ -298,6 +314,45 @@ class AppGUI:
         self.progress.pack(side=tk.RIGHT, padx=8, pady=4)
         self.status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor='w')
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, pady=4)
+
+    def _backup_action(self) -> None:
+        from tkinter import filedialog
+        dest = filedialog.askdirectory(parent=self.root, title="Choose backup destination")
+        if not dest:
+            return
+        def worker():
+            try:
+                self.app.backup(dest)
+                messagebox.showinfo("Backup", f"Backup completed to:\n{dest}")
+            except Exception as e:
+                messagebox.showerror("Backup", f"Failed: {e}")
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _restore_action(self) -> None:
+        from tkinter import filedialog
+        src = filedialog.askdirectory(parent=self.root, title="Choose backup folder to restore from")
+        if not src:
+            return
+        if not messagebox.askyesno("Restore", "Overwrite existing files during restore?"):
+            overwrite = False
+        else:
+            overwrite = True
+        def worker():
+            try:
+                self.app.restore(src, overwrite=overwrite)
+            except Exception as e:
+                messagebox.showerror("Restore", f"Failed: {e}")
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _cleanup_dangling_action(self) -> None:
+        def worker():
+            try:
+                self.app.cleanup_dangling()
+                # Refresh overview after cleanup
+                self._load_propresenter_tab()
+            except Exception as e:
+                messagebox.showerror("Cleanup", f"Failed: {e}")
+        threading.Thread(target=worker, daemon=True).start()
 
     def _load_languages(self) -> None:
         try:

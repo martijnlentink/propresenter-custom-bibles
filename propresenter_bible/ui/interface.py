@@ -18,6 +18,7 @@ class Ui(Protocol):
     def warn(self, message: str) -> None: ...
     def error(self, message: str) -> None: ...
     def confirm(self, message: str) -> bool: ...
+    def info_box(self, message: str, title: Optional[str] = None) -> None: ...
     
     # Selection helpers for CLI flows
     def choose_language(self, api_client) -> str: ...
@@ -26,6 +27,7 @@ class Ui(Protocol):
     def get_progress_reporter(self): ...
     def choose_install_method(self) -> bool: ...  # True = overwrite, False = sideload
     def select_overwrite_choice(self, choices: List[dict]) -> dict: ...
+    def prompt_backup_destination(self) -> str: ...
 
 
 from ..progress import (
@@ -55,6 +57,10 @@ class ConsoleUi:
         if click:
             return bool(click.confirm(message))
         return True
+
+    def info_box(self, message: str, title: Optional[str] = None) -> None:
+        # In CLI, treat as a normal info line
+        self.info(message)
 
     def choose_language(self, api_client) -> str:
         # use existing helper to offer a nice prompt flow
@@ -155,6 +161,12 @@ class ConsoleUi:
                 return choice_biblemeta
             self.warn("Please select one of the abbreviations from the list")
 
+    def prompt_backup_destination(self) -> str:
+        # Ask for a destination directory path. No file dialogs, pure CLI.
+        if click:
+            return click.prompt("Enter backup destination folder", type=str)
+        return input("Enter backup destination folder: ")
+
 
 class TkUi:
     """Tkinter-backed UI for info/warn/error/confirm used by the GUI.
@@ -197,6 +209,13 @@ class TkUi:
         except Exception:
             pass
 
+    def info_box(self, message: str, title: Optional[str] = None) -> None:
+        try:
+            from tkinter import messagebox as mbox
+            self._safe(mbox.showinfo, title or "Info", message)
+        except Exception:
+            pass
+
     def confirm(self, message: str) -> bool:
         try:
             from tkinter import messagebox as mbox
@@ -235,3 +254,13 @@ class TkUi:
 
     def select_overwrite_choice(self, choices: List[dict]) -> dict:  # pragma: no cover - not used in GUI
         raise NotImplementedError
+
+    def prompt_backup_destination(self) -> str:
+        try:
+            from tkinter import filedialog
+            path = filedialog.askdirectory(parent=self.root, title="Choose backup destination")
+            if not path:
+                raise RuntimeError("No destination chosen")
+            return path
+        except Exception:
+            return ""

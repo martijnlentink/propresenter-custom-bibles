@@ -6,6 +6,7 @@ handle progress display logic within the core modules.
 """
 
 import shutil
+import os
 from .config import Config
 from .services.api import BibleApiClient, VersionsResponse, VersionMetadata, VersionsItem
 from .services.decoder import YvesDecoder
@@ -112,3 +113,130 @@ class BibleImportApp:
         self.installer.reassign_abbreviation(folder_id, new_internal_abbr)
 
     # No additional UI helpers in this class; UI interactions are delegated
+
+    # ---- Backup (CLI-driven) ----
+    def backup(self, dest: str | None = None) -> None:
+        """Backup current Bible state to a user-provided destination folder.
+
+        - Windows: copies entire Bibles root directory
+        - macOS: copies existing sideload directories
+        """
+        from datetime import datetime
+        base_dest = Path(dest) if dest else Path(self.ui.prompt_backup_destination())
+        base_dest.mkdir(parents=True, exist_ok=True)
+
+        items = self.installer.get_backup_items()
+        if not items:
+            self.ui.error("No ProPresenter Bible locations found to back up.")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_root = base_dest / f"ProPresenter-Bibles-Backup-{timestamp}"
+        backup_root.mkdir(parents=True, exist_ok=True)
+
+        for label, src in items:
+            target = backup_root / label
+            if target.exists():
+                # Ensure a unique target
+                i = 1
+                while (backup_root / f"{label}-{i}").exists():
+                    i += 1
+                target = backup_root / f"{label}-{i}"
+            # Copy tree
+            try:
+                shutil.copytree(src, target)
+            except Exception as e:
+                self.ui.warn(f"Failed to back up {src}: {e}")
+
+        self.ui.info(f"Backup completed to: {backup_root}")
+
+    def restore(self, src: str, overwrite: bool = False) -> None:
+        """Restore a previously backed up state from the given folder.
+
+        Expects `src` to be a folder that contains labeled subfolders created by
+        `backup()` (e.g., 'Bibles', 'RVBibles_user').
+        """
+        src_path = Path(src)
+        if not src_path.exists() or not src_path.is_dir():
+            raise FileNotFoundError(f"Backup folder not found: {src}")
+
+        # Build label->dest map for this platform
+        targets = {label: dest for label, dest in self.installer.get_restore_targets()}
+        if not targets:
+            self.ui.error("No valid restore targets for this platform.")
+            return
+
+        # Iterate subfolders in src and restore to matching targets
+        import shutil as _shutil
+        restored_any = False
+        for child in src_path.iterdir():
+            if not child.is_dir():
+                continue
+            dest = targets.get(child.name)
+            if not dest:
+                # Skip unknown folder labels
+                continue
+            dest.mkdir(parents=True, exist_ok=True)
+            try:
+                # Merge copy. If overwrite is False, existing files are preserved.
+                # Perform a manual merge to control overwrite behavior.
+                for root, dirs, files in os.walk(child):
+                    rel = Path(root).relative_to(child)
+                    target_dir = dest / rel
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    for d in dirs:
+                        (target_dir / d).mkdir(parents=True, exist_ok=True)
+                    for f in files:
+                        src_file = Path(root) / f
+                        dst_file = target_dir / f
+                        if dst_file.exists() and not overwrite:
+                            continue
+                        _shutil.copy2(src_file, dst_file)
+                restored_any = True
+            except Exception as e:
+                self.ui.warn(f"Failed to restore {child.name}: {e}")
+
+        if not restored_any:
+            self.ui.warn("No matching backup content was restored.")
+        else:
+            self.ui.info("Restore completed.")
+
+    # ---- Cleanup dangling installs (Windows) ----
+    def cleanup_dangling(self) -> None:
+        """Detect and remove dangling installed bibles on Windows.
+
+        A dangling install is an installed entry whose abbreviation matches a
+        .rvbible present in the sideload directory.
+        """
+        try:
+            info = self.installer.plan_dangling_cleanup()
+        except NotImplementedError:
+            self.ui.warn("Dangling cleanup is not supported on this platform.")
+            return
+        folder_ids = info.get('folder_ids', [])
+        total_size = int(info.get('total_size', 0))
+        if not folder_ids:
+            self.ui.info_box("No dangling installations found.", title="Cleanup")
+            return
+
+        def _fmt_bytes(n: int) -> str:
+            units = ['B', 'KB', 'MB', 'GB', 'TB']
+            size = float(n)
+            for u in units:
+                if size < 1024.0 or u == units[-1]:
+                    return f"{size:.1f} {u}"
+                size /= 1024.0
+            return f"{n} B"
+
+        msg = (
+            f"Found {len(folder_ids)} dangling installation(s), "
+            f"reclaiming approximately {_fmt_bytes(total_size)}.\nProceed to delete?"
+        )
+        if not self.ui.confirm(msg):
+            return
+        for fid in folder_ids:
+            try:
+                self.installer.delete_installed(fid)
+            except Exception as e:
+                self.ui.warn(f"Failed to delete {fid}: {e}")
+        self.ui.info("Dangling cleanup complete.")

@@ -95,5 +95,27 @@ def gui_cmd():
         click.echo(f"Failed to launch GUI: {e}")
 
 
+@cli.command(name="backup")
+@click.option("--dest", "dest", required=False, help="Destination folder for backup")
+def backup_cmd(dest: str | None = None):
+    """Back up current ProPresenter Bible state to a folder."""
+    app = BibleImportApp(DEFAULT_CONFIG)
+    app.backup(dest)
+
+@cli.command(name="restore")
+@click.option("--src", "src", required=True, help="Path to backup folder to restore from")
+@click.option("--overwrite/--no-overwrite", default=False, help="Overwrite existing files when restoring")
+def restore_cmd(src: str, overwrite: bool):
+    """Restore a previously backed up Bible state from a folder."""
+    app = BibleImportApp(DEFAULT_CONFIG)
+    app.restore(src, overwrite=overwrite)
+
+@cli.command(name="cleanup-dangling")
+def cleanup_dangling_cmd():
+    """Clean up dangling installed bibles (Windows only)."""
+    app = BibleImportApp(DEFAULT_CONFIG)
+    app.cleanup_dangling()
+
+
 if __name__ == '__main__':
     cli()
