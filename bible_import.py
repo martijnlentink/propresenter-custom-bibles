@@ -364,7 +364,18 @@ def move_rvbible_propresenter_folder(rvbible_loc):
         propresenter_bible_location = os.path.join(program_data, 'RenewedVision\ProPresenter\Bibles\sideload')
         os.makedirs(propresenter_bible_location, exist_ok=True)
     elif system_str == 'Darwin':
-        propresenter_bible_location = '/Library/Application Support/RenewedVision/RVBibles/v2/'
+        # Prefer new per-user path; fall back to legacy system path
+        rvbibles_rel_path = os.path.join('Library', 'Application Support', 'RenewedVision', 'RVBibles', 'v2')
+        new_path = os.path.join(os.path.expanduser('~'), rvbibles_rel_path)
+        old_path = os.path.join(os.sep, rvbibles_rel_path)
+
+        for candidate in (new_path, old_path):
+            if os.path.exists(candidate):
+                propresenter_bible_location = candidate
+                break
+        else:
+            # Default to new per-user path if neither exists
+            propresenter_bible_location = new_path
     else:
         raise Exception("Unable to determine operating system, please copy the bible manually")
 
