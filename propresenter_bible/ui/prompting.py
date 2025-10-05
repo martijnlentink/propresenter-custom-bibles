@@ -3,7 +3,7 @@
 from typing import Dict
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import Completer, Completion
-from ..services.api import BibleApiClient, LanguagesResponse
+from ..services.api import BibleApiClient, LanguagesItem, LanguagesResponse
 
 
 class PromptCompleter(Completer):
@@ -24,9 +24,9 @@ def choose_language(api: BibleApiClient) -> str:
     languages: LanguagesResponse = api.get_languages_config()
     lang_versions = languages.default_versions
 
-    def gen_name(lang_version):
-        local_name = lang_version["local_name"]
-        name = lang_version["name"]
+    def gen_name(lang_version: LanguagesItem):
+        local_name = lang_version.local_name
+        name = lang_version.name
         return local_name if local_name == name else f"{local_name} ({name})"
 
     prompt_options = {gen_name(x): x.language_tag for x in lang_versions}

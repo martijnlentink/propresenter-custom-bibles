@@ -41,15 +41,34 @@ class InstallerBase:
         return {"id": parts[0], "abbreviation": parts[1], "translation": parts[2], "bible_format": parts[3]}
 
     # ---------- Abstract/OS-specific operations ----------
-    def get_sideload_dir(self) -> Path:
+    def get_sideload_dirs(self) -> List[Path]:
+        """Return possible sideload directories in preference order.
+
+        The first existing path should be treated as the preferred location.
+        If none exist, callers may use the first candidate as the default.
+        """
         raise NotImplementedError
+
+    def get_primary_sideload_dir(self) -> Path:
+        """Return the primary sideload directory to write to.
+
+        Chooses the first existing directory from `get_sideload_dirs()`; if none
+        exist, returns the first candidate. Raises if there are no candidates.
+        """
+        candidates = self.get_sideload_dirs()
+        if not candidates:
+            raise RuntimeError("No sideload directory candidates available for this platform")
+        for c in candidates:
+            if c.exists():
+                return c
+        return candidates[0]
 
     def get_bibles_root_dir(self) -> Optional[Path]:
         """Root dir where BibleData.proPref lives (if applicable to the OS)."""
         return None
 
     def move_rvbible_propresenter_folder(self, rvbible_loc: str) -> None:
-        dest_dir = self.get_sideload_dir()
+        dest_dir = self.get_primary_sideload_dir()
         dest_dir.mkdir(parents=True, exist_ok=True)
         src = Path(rvbible_loc)
         dest = dest_dir / src.name
@@ -105,8 +124,9 @@ class WindowsInstaller(InstallerBase):
 
     supports_overwrite = True
 
-    def get_sideload_dir(self) -> Path:
-        return self.get_bibles_root_dir() / 'sideload'
+    def get_sideload_dirs(self) -> List[Path]:
+        root = self.get_bibles_root_dir()
+        return [root / 'sideload'] if root else []
 
     def get_bibles_root_dir(self) -> Optional[Path]:
         import os as _os
@@ -272,38 +292,47 @@ class WindowsInstaller(InstallerBase):
 class MacInstaller(InstallerBase):
     """Installer implementation for macOS (Darwin)."""
 
-    def get_sideload_dir(self) -> Path:
-        return Path('/Library/Application Support/RenewedVision/RVBibles/v2/')
+    def get_sideload_dirs(self) -> List[Path]:
+        # Prefer new per-user path, then legacy system path
+        rel = Path('Library') / 'Application Support' / 'RenewedVision' / 'RVBibles' / 'v2'
+        user_path = Path.home() / rel
+        system_path = Path('/') / rel
+        return [user_path, system_path]
 
     # On macOS, ProPresenter consumes .rvbible files placed in the sideload dir.
     # There is no BibleData.proPref to mutate, so management is file-based.
 
     def list_installed(self) -> List[InstalledBibleEntry]:
-        sideload = self.get_sideload_dir()
-        if not sideload.exists():
-            return []
         results: List[InstalledBibleEntry] = []
-        for f in sideload.glob('*.rvbible'):
-            results.append(InstalledBibleEntry(
-                folder_id=f.stem,  # using filename stem as identifier
-                abbreviation=f.stem,
-                name=f.stem,
-                bible_format='rvbible',
-            ))
+        seen: set[str] = set()
+        for sideload in self.get_sideload_dirs():
+            if not sideload.exists():
+                continue
+            for f in sideload.glob('*.rvbible'):
+                key = f.stem.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append(InstalledBibleEntry(
+                    folder_id=f.stem,  # using filename stem as identifier
+                    abbreviation=f.stem,
+                    name=f.stem,
+                    bible_format='rvbible',
+                ))
         return results
 
     def delete_installed(self, folder_id: str) -> None:
-        sideload = self.get_sideload_dir()
-        # Accept both exact stem and full filename
-        candidate = sideload / f"{folder_id}.rvbible"
-        if candidate.exists():
-            candidate.unlink()
-            return
-        # try raw provided name
-        raw = sideload / folder_id
-        if raw.exists():
-            raw.unlink()
-            return
+        # Search all candidate sideload directories
+        for sideload in self.get_sideload_dirs():
+            # Accept both exact stem and full filename
+            candidate = sideload / f"{folder_id}.rvbible"
+            if candidate.exists():
+                candidate.unlink()
+                return
+            raw = sideload / folder_id
+            if raw.exists():
+                raw.unlink()
+                return
         raise FileNotFoundError(f"No installed bible found with id or filename '{folder_id}'")
 
     def reassign_abbreviation(self, folder_id: str, new_internal_abbr: str) -> None:
@@ -312,13 +341,19 @@ class MacInstaller(InstallerBase):
         This does not enforce uniqueness; ProPresenter supports arbitrary values.
         """
         import zipfile
-        sideload = self.get_sideload_dir()
-        zip_path = sideload / f"{folder_id}.rvbible"
-        if not zip_path.exists():
-            # try raw provided name
-            zip_path = sideload / folder_id
-            if not zip_path.exists():
-                raise FileNotFoundError(f"Sideload file not found: {folder_id}")
+        # locate the file across all candidate sideload directories
+        zip_path: Optional[Path] = None
+        for sideload in self.get_sideload_dirs():
+            candidate = sideload / f"{folder_id}.rvbible"
+            if candidate.exists():
+                zip_path = candidate
+                break
+            raw = sideload / folder_id
+            if raw.exists():
+                zip_path = raw
+                break
+        if not zip_path:
+            raise FileNotFoundError(f"Sideload file not found: {folder_id}")
 
         tmp_path = zip_path.with_suffix('.tmp')
         with zipfile.ZipFile(zip_path, 'r') as zin, zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
@@ -346,42 +381,42 @@ class MacInstaller(InstallerBase):
         """Return status/location/displayAbbreviation for sideloaded files on macOS."""
         import zipfile
         info: dict = {}
-        sideload = self.get_sideload_dir()
-        if not sideload.exists():
-            return info
-        for f in sideload.glob('*.rvbible'):
-            rights = None
-            display = None
-            installed_name = None
-            try:
-                with zipfile.ZipFile(f, 'r') as zf:
-                    # metadata.xml
-                    try:
-                        with zf.open('metadata.xml') as m:
-                            xt = ElementTree.parse(m)
-                            node = xt.xpath('//DBLMetadata/contact/rightsHolderAbbreviation')
-                            rights = node[0].text if node else None
-                            nn = xt.xpath('//identification/name')
-                            if nn:
-                                installed_name = nn[0].text
-                            else:
-                                nnl = xt.xpath('//identification/nameLocal')
-                                installed_name = nnl[0].text if nnl else None
-                    except Exception:
-                        rights = None
-                    # rvmetadata.xml
-                    try:
-                        with zf.open('rvmetadata.xml') as rm:
-                            xt = ElementTree.parse(rm)
-                            node = xt.xpath('//displayAbbreviation')
-                            display = node[0].text if node else None
-                    except Exception:
-                        display = None
-            except Exception:
-                pass
-            status = 'Overridden' if rights == 'NBV21' else 'Original'
-            key = f.stem.lower()
-            info[key] = {'status': status, 'location': str(f), 'displayAbbreviation': display, 'name': installed_name}
+        for sideload in self.get_sideload_dirs():
+            if not sideload.exists():
+                continue
+            for f in sideload.glob('*.rvbible'):
+                rights = None
+                display = None
+                installed_name = None
+                try:
+                    with zipfile.ZipFile(f, 'r') as zf:
+                        # metadata.xml
+                        try:
+                            with zf.open('metadata.xml') as m:
+                                xt = ElementTree.parse(m)
+                                node = xt.xpath('//DBLMetadata/contact/rightsHolderAbbreviation')
+                                rights = node[0].text if node else None
+                                nn = xt.xpath('//identification/name')
+                                if nn:
+                                    installed_name = nn[0].text
+                                else:
+                                    nnl = xt.xpath('//identification/nameLocal')
+                                    installed_name = nnl[0].text if nnl else None
+                        except Exception:
+                            rights = None
+                        # rvmetadata.xml
+                        try:
+                            with zf.open('rvmetadata.xml') as rm:
+                                xt = ElementTree.parse(rm)
+                                node = xt.xpath('//displayAbbreviation')
+                                display = node[0].text if node else None
+                        except Exception:
+                            display = None
+                except Exception:
+                    pass
+                status = 'Overridden' if rights == 'NBV21' else 'Original'
+                key = f.stem.lower()
+                info[key] = {'status': status, 'location': str(f), 'displayAbbreviation': display, 'name': installed_name}
         return info
 
 

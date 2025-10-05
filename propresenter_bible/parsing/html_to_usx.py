@@ -16,7 +16,7 @@ class HtmlToUsxParser:
         """Normalize spacing and punctuation quirks in verse text.
 
         Notes:
-        - Collapse extra spaces but keep newlines intact: ``([^\S\n])+`` matches
+        - Collapse extra spaces but keep newlines intact: ``([^\\S\n])+`` matches
           any run of whitespace characters that are not a newline.
         - Remove stray spaces around smart quotes and punctuation pairs, e.g.
           "word ” , next" -> "word”, next". The character class includes common

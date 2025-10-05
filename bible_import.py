@@ -33,7 +33,7 @@ def cli(ctx):
             click.echo(f"Failed to launch GUI: {e}")
 
 
-@cli.command(name="import-bible")
+@cli.command(name="install")
 def import_bible_cmd():
     """Run interactive download/import flow."""
     BibleImportApp(DEFAULT_CONFIG).run_interactive()
@@ -41,7 +41,7 @@ def import_bible_cmd():
 
 @cli.group(name="manage")
 def manage_cmd():
-    """Manage installed custom bibles (Windows)."""
+    """Manage installed custom bibles."""
     pass
 
 

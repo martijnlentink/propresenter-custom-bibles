@@ -6,7 +6,6 @@ handle progress display logic within the core modules.
 """
 
 import shutil
-from prompt_toolkit.shortcuts import radiolist_dialog
 from .config import Config
 from .services.api import BibleApiClient, VersionsResponse, VersionMetadata, VersionsItem
 from .services.decoder import YvesDecoder
@@ -16,8 +15,6 @@ from .building.usx_builder import UsxBuilder
 from .metadata.builder import MetadataBuilder
 from .install.installer import get_installer, InstallerBase
 from .ui.interface import Ui, ConsoleUi
-from .progress import ConsoleProgressReporter
-import click
 from pathlib import Path
 
 
@@ -64,20 +61,21 @@ class BibleImportApp:
 
     def _download_if_needed(self, location: Path, version: VersionsItem, metadata: VersionMetadata, reporter=None) -> None:
         need_download = True if not location.exists() else self.ui.confirm(
-            f"It appears that there is already a download folder for bible {version.local_abbreviation}. Are you sure you want to download the bible contents?"
+            f"It appears that there is already a download folder for bible {version.local_abbreviation}.\nAre you sure you want to download the bible contents instead of using cache?"
         )
         if not need_download:
             return
         self.ui.info(f"Starting download {version.local_title}")
         location.mkdir(parents=True, exist_ok=True)
-        rep = reporter or ConsoleProgressReporter()
+        # Ask UI for the appropriate progress reporter
+        rep = reporter or self.ui.get_progress_reporter()
         self.downloader.download(str(location), version.id, version.local_abbreviation, metadata, reporter=rep)
 
     def _build_outputs(self, location: Path, output_dir: Path, metadata: VersionMetadata, reporter=None) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         self.ui.info("Converting chapters to valid USX format")
         book_names = {b.usfm: b.human for b in metadata.books}
-        rep = reporter or ConsoleProgressReporter()
+        rep = reporter or self.ui.get_progress_reporter()
         usx_out = output_dir / "USX_1"
         usx_out.mkdir(parents=True, exist_ok=True)
         self.usx.build_from_downloads(str(location), str(usx_out), book_names=book_names, reporter=rep)
@@ -90,26 +88,12 @@ class BibleImportApp:
 
     def _install(self, output_dir: Path, abbr: str) -> None:
         if self.installer.supports_overwrite:
-            dialog = radiolist_dialog(
-                "ProPresenter installation",
-                "Choose how to install the Bible.",
-                values=[(1, 'Overwrite (recommended)'), (0, 'Sideload')]
-            )
-            if dialog.run() == 1:
+            # Delegate choice to UI
+            use_overwrite = self.ui.choose_install_method()
+            if use_overwrite:
                 # Interactive overwrite selection in UI layer
                 choices = self.installer.get_available_overwrite_choices()
-                from prompt_toolkit import prompt
-                from .ui.prompting import PromptCompleter
-                prompt_options = {f"{x['language']} - {x['name']}": x["displayAbbreviation"] for x in choices}
-                self.ui.info("Which translation would you like to overwrite?")
-                self.ui.info("Choose wisely - Please mind that you will not be able to use this translation anymore!")
-                while True:
-                    choice = prompt('Type to filter: ', completer=PromptCompleter(prompt_options))
-                    choice_abbr = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower() or x[1].lower() == choice.lower()), None)
-                    choice_biblemeta = next((x for x in choices if x["displayAbbreviation"].lower() == str(choice_abbr).lower()), None)
-                    if choice_abbr is not None and choice_biblemeta is not None:
-                        break
-                    self.ui.warn("Please select one of the abbreviations from the list")
+                choice_biblemeta = self.ui.select_overwrite_choice(choices)
                 self.installer.overwrite_free_bible(str(output_dir), choice_biblemeta["internalAbbreviation"])  # type: ignore[index]
                 return
 
@@ -126,3 +110,5 @@ class BibleImportApp:
 
     def reassign_abbreviation(self, folder_id: str, new_internal_abbr: str) -> None:
         self.installer.reassign_abbreviation(folder_id, new_internal_abbr)
+
+    # No additional UI helpers in this class; UI interactions are delegated

@@ -22,6 +22,18 @@ class Ui(Protocol):
     # Selection helpers for CLI flows
     def choose_language(self, api_client) -> str: ...
     def select_version(self, versions) -> object: ...
+    # Progress and install selection
+    def get_progress_reporter(self): ...
+    def choose_install_method(self) -> bool: ...  # True = overwrite, False = sideload
+    def select_overwrite_choice(self, choices: List[dict]) -> dict: ...
+
+
+from ..progress import (
+    ProgressReporter,
+    ConsoleProgressReporter,
+    TqdmProgressReporter,
+    NullProgressReporter,
+)
 
 
 class ConsoleUi:
@@ -61,6 +73,87 @@ class ConsoleUi:
         else:
             selected = int(input("Enter version id: "))
         return options[selected]
+
+    # ---- Progress / Install helpers ----
+    def get_progress_reporter(self) -> ProgressReporter:
+        # CLI prefers tqdm progress bars
+        return TqdmProgressReporter()
+
+    def choose_install_method(self) -> bool:
+        """Return True for overwrite, False for sideload with inline arrow menu."""
+        try:
+            from prompt_toolkit.application import Application
+            from prompt_toolkit.key_binding import KeyBindings
+            from prompt_toolkit.layout import Layout
+            from prompt_toolkit.layout.controls import FormattedTextControl
+            from prompt_toolkit.layout.containers import Window, HSplit
+        except Exception:
+            return self.confirm("Install using overwrite? (recommended)")
+
+        options = [
+            ("Overwrite unused translation (Recommended)", True),
+            ("Sideload", False),
+        ]
+        selected = {"idx": 0}
+
+        def _render_text():
+            lines = ["How do you want to install this translation?"]
+            for i, (label, _) in enumerate(options):
+                box = "☒" if i == selected["idx"] else "☐"
+                lines.append(f"{box} {label}")
+            return "\n".join(lines)
+
+        control = FormattedTextControl(text=lambda: _render_text())
+        root = HSplit([Window(content=control, always_hide_cursor=True)])
+
+        kb = KeyBindings()
+
+        @kb.add('up')
+        @kb.add('k')
+        def _up(event):  # noqa: ANN001
+            selected["idx"] = (selected["idx"] - 1) % len(options)
+            event.app.invalidate()
+
+        @kb.add('down')
+        @kb.add('j')
+        def _down(event):  # noqa: ANN001
+            selected["idx"] = (selected["idx"] + 1) % len(options)
+            event.app.invalidate()
+
+        @kb.add('enter')
+        def _enter(event):  # noqa: ANN001
+            event.app.exit(result=options[selected["idx"]][1])
+
+        @kb.add('escape')
+        def _esc(event):  # noqa: ANN001
+            event.app.exit(result=False)
+
+        app = Application(layout=Layout(root), key_bindings=kb, full_screen=False)
+        try:
+            return bool(app.run())
+        except Exception:
+            return self.confirm("Install using overwrite? (recommended)")
+
+    def select_overwrite_choice(self, choices: List[dict]) -> dict:
+        """Prompt to select which translation to overwrite from available choices."""
+        if not choices:
+            raise RuntimeError("No available translations to overwrite")
+        try:
+            from prompt_toolkit import prompt
+            from .prompting import PromptCompleter
+        except Exception:
+            # Fallback to first choice if prompt toolkit unavailable
+            return choices[0]
+        prompt_options = {f"{x['language']} - {x['name']}": x["displayAbbreviation"] for x in choices}
+        self.info("Which translation would you like to overwrite?")
+        self.info("Choose wisely - You will not be able to use this translation anymore!")
+        while True:
+            choice = prompt('Type to filter: ', completer=PromptCompleter(prompt_options))
+            choice_abbr = next((x[1] for x in prompt_options.items() if x[0].lower() == choice.lower() or x[1].lower() == choice.lower()), None)
+            choice_biblemeta = next((x for x in choices if x["displayAbbreviation"].lower() == str(choice_abbr).lower()), None)
+            if choice_abbr is not None and choice_biblemeta is not None:
+                return choice_biblemeta
+            self.warn("Please select one of the abbreviations from the list")
 
 
 class TkUi:
@@ -130,4 +223,15 @@ class TkUi:
         raise NotImplementedError
 
     def select_version(self, versions) -> object:  # pragma: no cover - not used in GUI
+        raise NotImplementedError
+
+    def get_progress_reporter(self) -> ProgressReporter:
+        # For GUI, avoid printing to console by default
+        return NullProgressReporter()
+
+    def choose_install_method(self) -> bool:  # pragma: no cover - GUI path likely separate
+        # Reuse confirm dialog for a simple choice
+        return self.confirm("Install using overwrite? (recommended)")
+
+    def select_overwrite_choice(self, choices: List[dict]) -> dict:  # pragma: no cover - not used in GUI
         raise NotImplementedError
